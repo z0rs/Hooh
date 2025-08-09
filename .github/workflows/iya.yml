@@ -17,12 +17,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Tools
+      - name: Install Tools
         run: |
           set -e
           sudo apt-get update
           sudo apt-get install -y wget unzip jq git curl dnsutils
-          go install github.com/cybercdh/assetfinder@cybercdh && sudo mv ~/go/bin/assetfinder /usr/bin/
+          go install github.com/cybercdh/assetfinder@cybercdh
+          sudo mv ~/go/bin/assetfinder /usr/bin/
           LATEST_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | jq -r '.tag_name')
           CLEAN_VERSION=${LATEST_VERSION#v}
           wget https://github.com/projectdiscovery/nuclei/releases/download/${LATEST_VERSION}/nuclei_${CLEAN_VERSION}_linux_amd64.zip
@@ -31,31 +32,39 @@ jobs:
           sudo chmod +x /usr/bin/nuclei
           rm -rf nuclei* *.md
 
-      - name: Run
+      - name: Run Enumeration & Scan
         env:
           DOMAINS: ${{ secrets.DOMAIN }}
         run: |
           set -e
           TODAY=$(date +%F)
           mkdir -p results
+
           echo "$DOMAINS" | tr ' ' '\n' | while read -r TARGET; do
             [ -z "$TARGET" ] && continue
-            echo "Enumiration: $TARGET"
-            mkdir -p results/$TARGET
+            echo "=== Enumeration for: $TARGET ==="
+            mkdir -p "results/$TARGET"
 
-            echo "[*] Subdomain..."
-            cat $TARGET | assetfinder --subs-only \
+            echo "[*] Running assetfinder..."
+            assetfinder --subs-only "$TARGET" \
               | tr -d '\r' \
-              | grep -E "([a-zA-Z0-9_-]+\.)+$TARGET$" \
-              | sort -u > results/$TARGET/subdomains.txt
+              | sort -u > "results/$TARGET/subdomains.txt"
 
-            echo "[*] Nuclei..."
-            nuclei -l results/$TARGET/subdomains.txt \
+            if [ ! -s "results/$TARGET/subdomains.txt" ]; then
+              echo "[!] No subdomains found for $TARGET"
+              continue
+            fi
+
+            echo "[*] Found $(wc -l < results/$TARGET/subdomains.txt) subdomains."
+            head -n 10 "results/$TARGET/subdomains.txt" || true
+
+            echo "[*] Running nuclei..."
+            nuclei -l "results/$TARGET/subdomains.txt" \
               -severity medium,high,critical,low,unknown \
               -c 50 \
               -timeout 10 \
               -rate-limit 100 \
-              -o results/$TARGET/nuclei.txt
+              -o "results/$TARGET/nuclei.txt"
           done
 
       - name: Send Alert
@@ -76,7 +85,7 @@ jobs:
                 ["unknown"]="❓ Unknown"
               )
               for sev in critical high medium low unknown; do
-                grep -i "\[$sev\]" results/$TARGET/nuclei.txt | while IFS= read -r line; do
+                grep -i "\[$sev\]" "results/$TARGET/nuclei.txt" | while IFS= read -r line; do
                   curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
                     -d chat_id="${TELEGRAM_CHAT_ID}" \
                     --data-urlencode "text=${SEV_EMOJI[$sev]} | $line"
