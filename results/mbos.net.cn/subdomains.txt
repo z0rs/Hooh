@@ -1,0 +1,12 @@
+api.mbos.net.cn
+ccc.cn.ctn.services.mbos.net.cn
+com.mbos.net.cn
+dev.mbos.net.cn
+i2.cgw.mqtt.cn.ctn.services.mbos.net.cn
+i3.cgw.mqtt.cn.ctn.services.mbos.net.cn
+i4.cgw.mqtt.cn.ctn.services.mbos.net.cn
+p.mbos.net.cn
+s3.mbos.net.cn
+services.mbos.net.cn
+t.mbos.net.cn
+test.mbos.net.cn
