@@ -2,7 +2,7 @@ name: Enum
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   enum:
@@ -22,7 +22,7 @@ jobs:
           set -e
           sudo apt-get update
           sudo apt-get install -y wget unzip jq git curl dnsutils
-          #go install github.com/cybercdh/assetfinder@cybercdh && sudo mv ~/go/bin/assetfinder /usr/bin/
+          go install github.com/cybercdh/assetfinder@cybercdh && sudo mv ~/go/bin/assetfinder /usr/bin/
           LATEST_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | jq -r '.tag_name')
           CLEAN_VERSION=${LATEST_VERSION#v}
           wget https://github.com/projectdiscovery/nuclei/releases/download/${LATEST_VERSION}/nuclei_${CLEAN_VERSION}_linux_amd64.zip
@@ -43,11 +43,11 @@ jobs:
             echo "Enumiration: $TARGET"
             mkdir -p results/$TARGET
 
-            #echo "[*] Subdomain..."
-            #assetfinder --subs-only $TARGET | grep "\.${TARGET}$" | sort -u > results/$TARGET/subdomains.txt
+            echo "[*] Subdomain..."
+            assetfinder --subs-only $TARGET | grep "\.${TARGET}$" | sort -u > results/$TARGET/subdomains.txt
 
             echo "[*] Nuclei..."
-            nuclei -u $TARGET \
+            nuclei -l results/$TARGET/subdomains.txt \
               -severity medium,high,critical,low,unknown \
               -c 50 \
               -timeout 10 \
@@ -101,4 +101,4 @@ jobs:
           git add results/ || true
           git commit -m "scans/results: $(date -u)" --no-verify || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-          git push origin HEAD:master || true
+          git push origin HEAD:main || true
