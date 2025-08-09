@@ -1,2 +1,0 @@
-[mysql-dump] [http] [medium] http://rest.vulnweb.com/db.sql [paths="/db.sql"]
-[phpinfo-files] [http] [low] http://rest.vulnweb.com/info.php ["7.1.26"] [paths="/info.php"]
