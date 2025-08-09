@@ -2,7 +2,7 @@ name: Enum
 
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   enum:
@@ -101,4 +101,4 @@ jobs:
           git add results/ || true
           git commit -m "scans/results: $(date -u)" --no-verify || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-          git push origin HEAD:main || true
+          git push origin HEAD:master || true
