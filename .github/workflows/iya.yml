@@ -38,13 +38,16 @@ jobs:
           set -e
           TODAY=$(date +%F)
           mkdir -p results
-          echo "$DOMAINS" | while read -r TARGET; do
+          echo "$DOMAINS" | tr ' ' '\n' | while read -r TARGET; do
             [ -z "$TARGET" ] && continue
             echo "Enumiration: $TARGET"
             mkdir -p results/$TARGET
 
             echo "[*] Subdomain..."
-            assetfinder --subs-only $TARGET | grep "\.${TARGET}$" | sort -u > results/$TARGET/subdomains.txt
+            assetfinder --subs-only "$TARGET" \
+              | tr -d '\r' \
+              | grep -E "([a-zA-Z0-9_-]+\.)+$TARGET$" \
+              | sort -u > results/$TARGET/subdomains.txt
 
             echo "[*] Nuclei..."
             nuclei -l results/$TARGET/subdomains.txt \
@@ -52,7 +55,6 @@ jobs:
               -c 50 \
               -timeout 10 \
               -rate-limit 100 \
-              -silent \
               -o results/$TARGET/nuclei.txt
           done
 
@@ -63,15 +65,15 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DOMAINS: ${{ secrets.DOMAIN }}
         run: |
-          echo "$DOMAINS" | while read -r TARGET; do
+          echo "$DOMAINS" | tr ' ' '\n' | while read -r TARGET; do
             [ -z "$TARGET" ] && continue
             if [ -s results/$TARGET/nuclei.txt ]; then
-              declare -A SEV_EMOJI=( \
-                ["critical"]="🚨 Critical" \
-                ["high"]="🔴 High" \
-                ["medium"]="🟠 Medium" \
-                ["low"]="🟢 Low" \
-                ["unknown"]="❓ Unknown" \
+              declare -A SEV_EMOJI=(
+                ["critical"]="🚨 Critical"
+                ["high"]="🔴 High"
+                ["medium"]="🟠 Medium"
+                ["low"]="🟢 Low"
+                ["unknown"]="❓ Unknown"
               )
               for sev in critical high medium low unknown; do
                 grep -i "\[$sev\]" results/$TARGET/nuclei.txt | while IFS= read -r line; do
