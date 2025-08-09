@@ -1,4 +1,4 @@
-name: Enum-Test
+name: Enum
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
           set -e
           sudo apt-get update
           sudo apt-get install -y wget unzip jq git curl dnsutils
-          go install github.com/cybercdh/assetfinder@cybercdh && sudo mv ~/go/bin/assetfinder /usr/bin/
+          #go install github.com/cybercdh/assetfinder@cybercdh && sudo mv ~/go/bin/assetfinder /usr/bin/
           LATEST_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | jq -r '.tag_name')
           CLEAN_VERSION=${LATEST_VERSION#v}
           wget https://github.com/projectdiscovery/nuclei/releases/download/${LATEST_VERSION}/nuclei_${CLEAN_VERSION}_linux_amd64.zip
@@ -43,12 +43,12 @@ jobs:
             echo "Enumiration: $TARGET"
             mkdir -p results/$TARGET
 
-            echo "[*] Subdomain..."
-            assetfinder --subs-only $TARGET | grep "\.${TARGET}$" | sort -u > results/$TARGET/subdomains.txt
+            #echo "[*] Subdomain..."
+            #assetfinder --subs-only $TARGET | grep "\.${TARGET}$" | sort -u > results/$TARGET/subdomains.txt
 
             echo "[*] Nuclei..."
-            nuclei -l results/$TARGET/subdomains.txt \
-              -severity medium,high,critical,low,info,unknown \
+            nuclei -u $TARGET \
+              -severity medium,high,critical,low,unknown \
               -c 50 \
               -timeout 10 \
               -rate-limit 100 \
@@ -56,7 +56,7 @@ jobs:
               -o results/$TARGET/nuclei.txt
           done
 
-      - name: Send Telegram Alert
+      - name: Send Alert
         if: always()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -71,12 +71,10 @@ jobs:
                 ["high"]="🔴 High" \
                 ["medium"]="🟠 Medium" \
                 ["low"]="🟢 Low" \
-                ["info"]="🔍 Info" \
                 ["unknown"]="❓ Unknown" \
               )
-              for sev in critical high medium low info unknown; do
+              for sev in critical high medium low unknown; do
                 grep -i "\[$sev\]" results/$TARGET/nuclei.txt | while IFS= read -r line; do
-                  # send 1 line per msg, prefixed with emoji+sev
                   curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
                     -d chat_id="${TELEGRAM_CHAT_ID}" \
                     --data-urlencode "text=${SEV_EMOJI[$sev]} | $line"
