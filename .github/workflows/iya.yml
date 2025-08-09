@@ -9,75 +9,106 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
       - name: Setup Go 1.23
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
 
-      - name: Checkout code
-        uses: actions/checkout@v3
-
       - name: Install Tools
         run: |
-          set -e
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y wget unzip jq git curl dnsutils
-          # Install assetfinder
-          go install github.com/cybercdh/assetfinder@cybercdh
-          sudo mv ~/go/bin/assetfinder /usr/bin/
-          # Install subfinder
+          # assetfinder
+          go install github.com/tomnomnom/assetfinder@latest
+          sudo mv ~/go/bin/assetfinder /usr/bin/ || true
+          # subfinder
           go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          sudo mv ~/go/bin/subfinder /usr/bin/
-          # Install nuclei
+          sudo mv ~/go/bin/subfinder /usr/bin/ || true
+          # dnsx
+          go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+          sudo mv ~/go/bin/dnsx /usr/bin/ || true
+          # nuclei
           LATEST_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | jq -r '.tag_name')
           CLEAN_VERSION=${LATEST_VERSION#v}
-          wget https://github.com/projectdiscovery/nuclei/releases/download/${LATEST_VERSION}/nuclei_${CLEAN_VERSION}_linux_amd64.zip
+          wget -q https://github.com/projectdiscovery/nuclei/releases/download/${LATEST_VERSION}/nuclei_${CLEAN_VERSION}_linux_amd64.zip
           unzip -o nuclei_${CLEAN_VERSION}_linux_amd64.zip
-          sudo mv nuclei /usr/bin/
-          sudo chmod +x /usr/bin/nuclei
-          rm -rf nuclei* *.md
+          sudo mv nuclei /usr/bin/ || true
+          sudo chmod +x /usr/bin/nuclei || true
+          rm -f nuclei_${CLEAN_VERSION}_linux_amd64.zip *.md || true
 
       - name: Run Enumeration & Scan
         env:
           DOMAINS: ${{ secrets.DOMAIN }}
         run: |
-          set -e
-          TODAY=$(date +%F)
+          set -euo pipefail
           mkdir -p results
+          printf "%s\n" "$DOMAINS" | tr ' \t' '\n' | grep -v '^$' > /tmp/domains.txt
+          DOMAIN_COUNT=$(wc -l < /tmp/domains.txt || echo 0)
+          echo "[*] Domains to process: $DOMAIN_COUNT"
 
-          echo "$DOMAINS" | tr ' \t' '\n' | grep -v '^$' | while read -r TARGET; do
+          if [ "$DOMAIN_COUNT" -gt 0 ]; then
+            echo "[*] Running subfinder batch..."
+            mkdir -p results/_subfinder_raw
+            subfinder -silent -dL /tmp/domains.txt -oD results/_subfinder_raw || true
+          fi
+
+          while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+            TARGET=$(echo "$TARGET" | tr -d '\r')
             [ -z "$TARGET" ] && continue
             echo "=== Enumeration for: $TARGET ==="
             mkdir -p "results/$TARGET"
 
-            echo "[*] Running assetfinder..."
-            assetfinder --subs-only "$TARGET" \
-              | tr -d '\r' \
-              | sort -u > "results/$TARGET/subdomains.txt"
-
-            if [ ! -s "results/$TARGET/subdomains.txt" ]; then
-              echo "[!] No subdomains from assetfinder, trying subfinder..."
-              subfinder -silent -d "$TARGET" \
-                | tr -d '\r' \
-                | sort -u > "results/$TARGET/subdomains.txt"
+            RAW1="results/_subfinder_raw/${TARGET}"
+            RAW2="${RAW1}.txt"
+            if [ -s "$RAW1" ]; then
+              cat "$RAW1" | sort -u > "results/$TARGET/subdomains.txt"
+            elif [ -s "$RAW2" ]; then
+              cat "$RAW2" | sort -u > "results/$TARGET/subdomains.txt"
+            else
+              echo "[*] No batch subfinder result, trying assetfinder..."
+              assetfinder --subs-only "$TARGET" | sort -u > "results/$TARGET/subdomains.txt"
+              if [ ! -s "results/$TARGET/subdomains.txt" ]; then
+                echo "[*] assetfinder empty, trying subfinder single..."
+                subfinder -silent -d "$TARGET" | sort -u > "results/$TARGET/subdomains.txt"
+              fi
             fi
 
             if [ ! -s "results/$TARGET/subdomains.txt" ]; then
-              echo "[!] Still no subdomains found for $TARGET"
+              echo "[!] No subdomains found for $TARGET"
               continue
             fi
 
-            echo "[*] Found $(wc -l < results/$TARGET/subdomains.txt) subdomains."
+            ESC_TARGET=$(printf '%s' "$TARGET" | sed 's/\./\\./g')
+            grep -E "([a-zA-Z0-9_-]+\.)*${ESC_TARGET}$" "results/$TARGET/subdomains.txt" | sort -u > "results/$TARGET/subdomains.filtered.txt"
+            mv -f "results/$TARGET/subdomains.filtered.txt" "results/$TARGET/subdomains.txt"
+
+            echo "[*] Found $(wc -l < results/$TARGET/subdomains.txt) subdomains (raw)"
             head -n 10 "results/$TARGET/subdomains.txt" || true
 
-            echo "[*] Running nuclei..."
-            nuclei -l "results/$TARGET/subdomains.txt" \
+            echo "[*] Running dnsx to filter only-alive..."
+            dnsx -silent -l "results/$TARGET/subdomains.txt" -resp-only -o "results/$TARGET/subdomains.alive.txt"
+
+            if [ ! -s "results/$TARGET/subdomains.alive.txt" ]; then
+              echo "[!] No alive subdomains for $TARGET"
+              continue
+            fi
+
+            echo "[*] Found $(wc -l < results/$TARGET/subdomains.alive.txt) alive subdomains"
+            head -n 10 "results/$TARGET/subdomains.alive.txt" || true
+
+            echo "[*] Running nuclei on alive subdomains..."
+            nuclei -l "results/$TARGET/subdomains.alive.txt" \
               -severity medium,high,critical,low,unknown \
               -c 50 \
               -timeout 10 \
               -rate-limit 100 \
-              -o "results/$TARGET/nuclei.txt"
-          done
+              -o "results/$TARGET/nuclei.txt" || true
+
+          done < /tmp/domains.txt
 
       - name: Send Alert
         if: always()
