@@ -22,8 +22,13 @@ jobs:
           set -e
           sudo apt-get update
           sudo apt-get install -y wget unzip jq git curl dnsutils
+          # Install assetfinder
           go install github.com/cybercdh/assetfinder@cybercdh
           sudo mv ~/go/bin/assetfinder /usr/bin/
+          # Install subfinder
+          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          sudo mv ~/go/bin/subfinder /usr/bin/
+          # Install nuclei
           LATEST_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | jq -r '.tag_name')
           CLEAN_VERSION=${LATEST_VERSION#v}
           wget https://github.com/projectdiscovery/nuclei/releases/download/${LATEST_VERSION}/nuclei_${CLEAN_VERSION}_linux_amd64.zip
@@ -40,7 +45,7 @@ jobs:
           TODAY=$(date +%F)
           mkdir -p results
 
-          echo "$DOMAINS" | tr ' ' '\n' | while read -r TARGET; do
+          echo "$DOMAINS" | tr ' \t' '\n' | grep -v '^$' | while read -r TARGET; do
             [ -z "$TARGET" ] && continue
             echo "=== Enumeration for: $TARGET ==="
             mkdir -p "results/$TARGET"
@@ -51,7 +56,14 @@ jobs:
               | sort -u > "results/$TARGET/subdomains.txt"
 
             if [ ! -s "results/$TARGET/subdomains.txt" ]; then
-              echo "[!] No subdomains found for $TARGET"
+              echo "[!] No subdomains from assetfinder, trying subfinder..."
+              subfinder -silent -d "$TARGET" \
+                | tr -d '\r' \
+                | sort -u > "results/$TARGET/subdomains.txt"
+            fi
+
+            if [ ! -s "results/$TARGET/subdomains.txt" ]; then
+              echo "[!] Still no subdomains found for $TARGET"
               continue
             fi
 
@@ -74,7 +86,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DOMAINS: ${{ secrets.DOMAIN }}
         run: |
-          echo "$DOMAINS" | tr ' ' '\n' | while read -r TARGET; do
+          echo "$DOMAINS" | tr ' \t' '\n' | grep -v '^$' | while read -r TARGET; do
             [ -z "$TARGET" ] && continue
             if [ -s results/$TARGET/nuclei.txt ]; then
               declare -A SEV_EMOJI=(
