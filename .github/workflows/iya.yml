@@ -44,7 +44,7 @@ jobs:
             mkdir -p results/$TARGET
 
             echo "[*] Subdomain..."
-            assetfinder --subs-only "$TARGET" \
+            cat $TARGET | assetfinder --subs-only \
               | tr -d '\r' \
               | grep -E "([a-zA-Z0-9_-]+\.)+$TARGET$" \
               | sort -u > results/$TARGET/subdomains.txt
