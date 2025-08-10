@@ -94,7 +94,7 @@ jobs:
             #  -rate-limit 100 \
             #  -o "results/$TARGET/nuclei.txt" || true
 
-          done #< /tmp/domains.txt
+          done < /tmp/domains.txt
 
       - name: Send Alert
         if: always()
