@@ -45,14 +45,20 @@ jobs:
           DOMAINS: ${{ secrets.DOMAIN }}
         run: |
           set -euo pipefail
+
           mkdir -p results
-          printf "%s\n" "$DOMAINS" | tr ' \t' '\n' | grep -v '^$' > /tmp/domains.txt
+
+          # Pastikan $DOMAINS diubah jadi list baris beneran
+          printf "%s\n" "$DOMAINS" | tr '\r' '\n' | grep -v '^[[:space:]]*$' > /tmp/domains.txt
+
           DOMAIN_COUNT=$(wc -l < /tmp/domains.txt || echo 0)
           echo "[*] Domains to process: $DOMAIN_COUNT"
 
-          while IFS= read -r TARGET || [ -n "$TARGET" ]; do
-            TARGET=$(echo "$TARGET" | tr -d '\r')
+          # Loop untuk setiap domain di file
+          while IFS= read -r TARGET; do
+            TARGET=$(echo "$TARGET" | tr -d '\r' | xargs)
             [ -z "$TARGET" ] && continue
+
             echo "=== Enumeration for: $TARGET ==="
             mkdir -p "results/$TARGET"
 
@@ -84,15 +90,15 @@ jobs:
 
             echo "[*] Found $(wc -l < results/$TARGET/live.txt) alive subdomains"
 
-            # 3. Scan with nuclei
-            #echo "[*] Running nuclei for $TARGET..."
-            #nuclei -l "results/$TARGET/live.txt" \
-            #  -target-as-hostname \
-            #  -severity medium,high,critical,low,unknown \
-            #  -c 50 \
-            #  -timeout 10 \
-            #  -rate-limit 100 \
-            #  -o "results/$TARGET/nuclei.txt" || true
+            # 3. (Optional) nuclei scan
+            # echo "[*] Running nuclei for $TARGET..."
+            # nuclei -l "results/$TARGET/live.txt" \
+            #   -target-as-hostname \
+            #   -severity medium,high,critical,low,unknown \
+            #   -c 50 \
+            #   -timeout 10 \
+            #   -rate-limit 100 \
+            #   -o "results/$TARGET/nuclei.txt" || true
 
           done < /tmp/domains.txt
 
