@@ -1,7 +1,0 @@
-[kubernetes-fake-certificate] [ssl] [low] 54.228.215.200:443 ["Issuer: Kubernetes Ingress Controller Fake Certificate"]
-[self-signed-ssl] [ssl] [low] 54.228.215.200:443
-[kubernetes-fake-certificate] [ssl] [low] 52.51.96.72:443 ["Issuer: Kubernetes Ingress Controller Fake Certificate"]
-[self-signed-ssl] [ssl] [low] 52.51.96.72:443
-[kubernetes-fake-certificate] [ssl] [low] 63.32.218.45:443 ["Issuer: Kubernetes Ingress Controller Fake Certificate"]
-[self-signed-ssl] [ssl] [low] 63.32.218.45:443
-[expired-ssl] [ssl] [low] 195.72.134.19:443 ["2025-02-21 23:59:59 +0000 UTC"]
