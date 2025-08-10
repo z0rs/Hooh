@@ -1,0 +1,1 @@
+[aem-default-get-servlet] [http] [low] https://content-nj.partypoker.com/etc.json [paths="/etc.json"]
