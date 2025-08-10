@@ -2,7 +2,7 @@ name: Enum
 
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   enum:
@@ -50,63 +50,46 @@ jobs:
           DOMAIN_COUNT=$(wc -l < /tmp/domains.txt || echo 0)
           echo "[*] Domains to process: $DOMAIN_COUNT"
 
-          if [ "$DOMAIN_COUNT" -gt 0 ]; then
-            echo "[*] Running subfinder batch..."
-            mkdir -p results/_subfinder_raw
-            subfinder -silent -dL /tmp/domains.txt -oD results/_subfinder_raw || true
-          fi
-
           while IFS= read -r TARGET || [ -n "$TARGET" ]; do
             TARGET=$(echo "$TARGET" | tr -d '\r')
             [ -z "$TARGET" ] && continue
             echo "=== Enumeration for: $TARGET ==="
             mkdir -p "results/$TARGET"
 
-            RAW1="results/_subfinder_raw/${TARGET}"
-            RAW2="${RAW1}.txt"
-            if [ -s "$RAW1" ]; then
-              cat "$RAW1" | sort -u > "results/$TARGET/subdomains.txt"
-            elif [ -s "$RAW2" ]; then
-              cat "$RAW2" | sort -u > "results/$TARGET/subdomains.txt"
-            else
-              echo "[*] No batch subfinder result, trying assetfinder..."
-              assetfinder --subs-only "$TARGET" | sort -u > "results/$TARGET/subdomains.txt"
-              if [ ! -s "results/$TARGET/subdomains.txt" ]; then
-                echo "[*] assetfinder empty, trying subfinder single..."
-                subfinder -silent -d "$TARGET" | sort -u > "results/$TARGET/subdomains.txt"
-              fi
-            fi
+            # 🔍 Subdomain Enumeration
+            {
+              subfinder -silent -d "$TARGET"
+              assetfinder --subs-only "$TARGET"
+            } | grep "\.${TARGET}$" | sort -u > "results/$TARGET/subdomain.txt"
 
-            if [ ! -s "results/$TARGET/subdomains.txt" ]; then
+            if [ ! -s "results/$TARGET/subdomain.txt" ]; then
               echo "[!] No subdomains found for $TARGET"
               continue
             fi
 
-            ESC_TARGET=$(printf '%s' "$TARGET" | sed 's/\./\\./g')
-            grep -E "([a-zA-Z0-9_-]+\.)*${ESC_TARGET}$" "results/$TARGET/subdomains.txt" | sort -u > "results/$TARGET/subdomains.filtered.txt"
-            mv -f "results/$TARGET/subdomains.filtered.txt" "results/$TARGET/subdomains.txt"
+            echo "[*] Found $(wc -l < results/$TARGET/subdomain.txt) subdomains"
+            head -n 10 "results/$TARGET/subdomain.txt" || true
 
-            echo "[*] Found $(wc -l < results/$TARGET/subdomains.txt) subdomains (raw)"
-            head -n 10 "results/$TARGET/subdomains.txt" || true
+            # 🌐 Live Check with dnsx (domain + IP)
+            dnsx -silent -a -l "results/$TARGET/subdomain.txt" \
+              | awk '{print $1, $2}' > "results/$TARGET/live.txt"
 
-            echo "[*] Running dnsx to filter only-alive..."
-            dnsx -silent -l "results/$TARGET/subdomains.txt" -resp-only -o "results/$TARGET/subdomains.alive.txt"
-
-            if [ ! -s "results/$TARGET/subdomains.alive.txt" ]; then
+            if [ ! -s "results/$TARGET/live.txt" ]; then
               echo "[!] No alive subdomains for $TARGET"
               continue
             fi
 
-            echo "[*] Found $(wc -l < results/$TARGET/subdomains.alive.txt) alive subdomains"
-            head -n 10 "results/$TARGET/subdomains.alive.txt" || true
+            echo "[*] Found $(wc -l < results/$TARGET/live.txt) alive subdomains"
+            head -n 10 "results/$TARGET/live.txt" || true
 
-            echo "[*] Running nuclei on alive subdomains..."
-            nuclei -l "results/$TARGET/subdomains.alive.txt" \
-              -severity medium,high,critical,low,unknown \
-              -c 50 \
-              -timeout 10 \
-              -rate-limit 100 \
-              -o "results/$TARGET/nuclei.txt" || true
+            # 🚀 Nuclei Scan
+            awk '{print $1}' "results/$TARGET/live.txt" \
+              | nuclei \
+                -severity medium,high,critical,low,unknown \
+                -c 50 \
+                -timeout 10 \
+                -rate-limit 100 \
+                -o "results/$TARGET/nuclei.txt" || true
 
           done < /tmp/domains.txt
 
@@ -155,4 +138,4 @@ jobs:
           git add results/ || true
           git commit -m "scans/results: $(date -u)" --no-verify || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-          git push origin HEAD:main || true
+          git push origin HEAD:master || true
