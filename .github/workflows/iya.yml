@@ -48,15 +48,20 @@ jobs:
 
           mkdir -p results
 
-          # Pastikan $DOMAINS diubah jadi list baris beneran
-          printf "%s\n" "$DOMAINS" | tr '\r' '\n' | grep -v '^[[:space:]]*$' > /tmp/domains.txt
+          # Normalize DOMAINS into one-per-line (handles spaces, tabs, newlines, commas, semicolons)
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u > /tmp/domains.txt
 
           DOMAIN_COUNT=$(wc -l < /tmp/domains.txt || echo 0)
           echo "[*] Domains to process: $DOMAIN_COUNT"
 
           # Loop untuk setiap domain di file
-          while IFS= read -r TARGET; do
-            TARGET=$(echo "$TARGET" | tr -d '\r' | xargs)
+          while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+            # trim leading/trailing whitespace
+            TARGET=$(echo "$TARGET" | xargs)
             [ -z "$TARGET" ] && continue
 
             echo "=== Enumeration for: $TARGET ==="
@@ -87,9 +92,13 @@ jobs:
               echo "[!] No alive subdomains for $TARGET"
               continue
             fi
-            
+
+            # 3. Filter dangling CNAME (query tiap subdomain dari subdomains.txt)
             echo "[*] Filtering dangling CNAME (possible takeover)..."
-            while read -r sub; do
+            : > "results/$TARGET/dangling-cname.txt"  # truncate/create file
+            while IFS= read -r sub; do
+              sub=$(echo "$sub" | xargs)
+              [ -z "$sub" ] && continue
               cname=$(dig +short CNAME "$sub" | sed 's/\.$//')
               if [ -n "$cname" ]; then
                 if ! dig +short "$cname" | grep -q .; then
@@ -118,30 +127,38 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DOMAINS: ${{ secrets.DOMAIN }}
         run: |
-          echo "$DOMAINS" | tr ' \t' '\n' | grep -v '^$' | while read -r TARGET; do
-            [ -z "$TARGET" ] && continue
-            if [ -s results/$TARGET/nuclei.txt ]; then
-              declare -A SEV_EMOJI=(
-                ["critical"]="🚨 Critical"
-                ["high"]="🔴 High"
-                ["medium"]="🟠 Medium"
-                ["low"]="🟢 Low"
-                ["unknown"]="❓ Unknown"
-              )
-              for sev in critical high medium low unknown; do
-                grep -i "\[$sev\]" "results/$TARGET/nuclei.txt" | while IFS= read -r line; do
-                  curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                    -d chat_id="${TELEGRAM_CHAT_ID}" \
-                    --data-urlencode "text=${SEV_EMOJI[$sev]} | $line"
-                  sleep 0.5
+          # Normalize DOMAINS same way as above
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+
+              if [ -s "results/$TARGET/nuclei.txt" ]; then
+                declare -A SEV_EMOJI=(
+                  ["critical"]="🚨 Critical"
+                  ["high"]="🔴 High"
+                  ["medium"]="🟠 Medium"
+                  ["low"]="🟢 Low"
+                  ["unknown"]="❓ Unknown"
+                )
+                for sev in critical high medium low unknown; do
+                  grep -i "\[$sev\]" "results/$TARGET/nuclei.txt" | while IFS= read -r line; do
+                    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                      -d chat_id="${TELEGRAM_CHAT_ID}" \
+                      --data-urlencode "text=${SEV_EMOJI[$sev]} | $line"
+                    sleep 0.5
+                  done
                 done
-              done
-            else
-              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                -d chat_id="${TELEGRAM_CHAT_ID}" \
-                -d text="✅ Scan done for: $TARGET — No vulnerabilities found."
-            fi
-          done
+              else
+                curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                  -d chat_id="${TELEGRAM_CHAT_ID}" \
+                  -d text="✅ Scan done for: $TARGET — No vulnerabilities found."
+              fi
+            done
 
       - name: Git & Push results
         if: always()
