@@ -1,0 +1,8 @@
+account-nj.partypoker.com -> account-nj.partypoker.com.cdn.cloudflare.net [🔥 Dangling]
+allianceservices-cdn.partypoker.com -> allianceservices-cdn.bwin.com.cdngc.net [🔥 Dangling]
+cantorffo.partypoker.com -> partypoker-download.cantorffo.co.uk [🔥 Dangling]
+cashierstatic.partypoker.com -> baymanage.hs.llnwd.net [🔥 Dangling]
+casino.m.nj.partypoker.com -> casino.m.nj.partypoker.com.cdn.cloudflare.net [🔥 Dangling]
+livecasino.partypoker.com -> partypoker-com.evonetworks.net [🔥 Dangling]
+realcs.partypoker.com -> fullhouse.partypoker.com [🔥 Dangling]
+upgrade.partypoker.com -> baymanage.hs.llnwd.net [🔥 Dangling]
