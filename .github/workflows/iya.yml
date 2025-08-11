@@ -2,7 +2,7 @@ name: Enum
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   enum:
@@ -95,17 +95,22 @@ jobs:
 
             # 3. Filter dangling CNAME (query tiap subdomain dari subdomains.txt)
             echo "[*] Filtering dangling CNAME (possible takeover)..."
-            : > "results/$TARGET/dangling-cname.txt"  # truncate/create file
-            set +e  # biar nggak mati kalau dig gagal
+            : > "results/$TARGET/dangling-cname.txt"
+            
+            set +e
             while IFS= read -r sub; do
-              sub=$(echo "$sub" | xargs)
-              [ -z "$sub" ] && continue
-              cname=$(dig +short CNAME "$sub" 2>/dev/null | sed 's/\.$//' || true)
-              if [ -n "$cname" ]; then
-                if ! dig +short "$cname" 2>/dev/null | grep -q .; then
-                  echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
+                sub=$(echo "$sub" | xargs)
+                [ -z "$sub" ] && continue
+            
+                # Ambil CNAME, buang titik di belakang, error nggak ditampilin
+                cname=$(dig +short CNAME "$sub" 2>/dev/null | sed 's/\.$//' | head -n1)
+            
+                if [ -n "$cname" ]; then
+                    # Cek apakah CNAME resolve, error nggak ditampilin
+                    if ! dig +short "$cname" 2>/dev/null | grep -q .; then
+                        echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
+                    fi
                 fi
-              fi
             done < "results/$TARGET/subdomains.txt"
             set -e
 
@@ -175,4 +180,4 @@ jobs:
           git add results/ || true
           git commit -m "scans/results: $(date -u)" --no-verify || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-          git push origin HEAD:master || true
+          git push origin HEAD:main || true
