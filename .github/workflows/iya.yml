@@ -87,16 +87,16 @@ jobs:
               echo "[!] No alive subdomains for $TARGET"
               continue
             fi
-
+            
             echo "[*] Filtering dangling CNAME (possible takeover)..."
-            awk '/\[CNAME\]/ {
-              gsub(/\[|\]/, "", $0);
-              print $1, $3;
-            }' results/$TARGET/subdomains.txt | while read sub cname; do
-              if ! dig +short "$cname" | grep -q .; then
-                echo "$sub -> $cname [🔥 Dangling]" >> results/$TARGET/dangling-cname.txt
+            while read -r sub; do
+              cname=$(dig +short CNAME "$sub" | sed 's/\.$//')
+              if [ -n "$cname" ]; then
+                if ! dig +short "$cname" | grep -q .; then
+                  echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
+                fi
               fi
-            done
+            done < "results/$TARGET/subdomains.txt"
 
             echo "[*] Found $(wc -l < results/$TARGET/live.txt) alive subdomains"
 
