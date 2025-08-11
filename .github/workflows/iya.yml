@@ -96,16 +96,18 @@ jobs:
             # 3. Filter dangling CNAME (query tiap subdomain dari subdomains.txt)
             echo "[*] Filtering dangling CNAME (possible takeover)..."
             : > "results/$TARGET/dangling-cname.txt"  # truncate/create file
+            set +e  # biar nggak mati kalau dig gagal
             while IFS= read -r sub; do
               sub=$(echo "$sub" | xargs)
               [ -z "$sub" ] && continue
-              cname=$(dig +short CNAME "$sub" | sed 's/\.$//')
+              cname=$(dig +short CNAME "$sub" 2>/dev/null | sed 's/\.$//' || true)
               if [ -n "$cname" ]; then
-                if ! dig +short "$cname" | grep -q .; then
+                if ! dig +short "$cname" 2>/dev/null | grep -q .; then
                   echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
                 fi
               fi
             done < "results/$TARGET/subdomains.txt"
+            set -e
 
             echo "[*] Found $(wc -l < results/$TARGET/live.txt) alive subdomains"
 
