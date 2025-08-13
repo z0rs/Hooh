@@ -9,6 +9,7 @@ on:
 jobs:
   enum:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -30,7 +31,6 @@ jobs:
           go install github.com/tomnomnom/assetfinder@latest
           go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
           go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
-          go install github.com/haccer/subjack@latest
           go install github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
           go install github.com/jaeles-project/gospider@latest
 
@@ -49,7 +49,10 @@ jobs:
           set -euo pipefail
           mkdir -p results
 
-          echo "$DOMAINS" | tr -d '\r' | tr ',;' '\n' | sed 's#https\?://##g' | cut -d'/' -f1 | sed '/^$/d' | sort -u > /tmp/domains.txt
+          echo "$DOMAINS" | tr -d '\r' | tr ',;' '\n' \
+            | sed 's#https\?://##g' | cut -d'/' -f1 | sed '/^$/d' \
+            | sort -u > /tmp/domains.txt
+
           echo "[*] Domains:"; cat /tmp/domains.txt
 
           while IFS= read -r TARGET; do
@@ -57,6 +60,7 @@ jobs:
             echo "===== $TARGET ====="
             mkdir -p "results/$TARGET"
 
+            # Subdomain enumeration
             subfinder -silent -d "$TARGET" > "results/$TARGET/subdomains.txt" || true
             if [ ! -s "results/$TARGET/subdomains.txt" ]; then
               assetfinder --subs-only "$TARGET" | sort -u > "results/$TARGET/subdomains.txt"
@@ -66,6 +70,7 @@ jobs:
             grep -viE "(^|\.)((nonprod|dev|staging|sandbox|test)[.-])" \
               "results/$TARGET/subdomains.txt" > "results/$TARGET/subs_scoped.txt" || true
 
+            # Live check
             dnsx -silent -a -resp -l "results/$TARGET/subs_scoped.txt" > "results/$TARGET/live.txt" || true
 
             # Dangling CNAME check
@@ -77,7 +82,7 @@ jobs:
               fi
             done < "results/$TARGET/subs_scoped.txt"
 
-            # Azure focus
+            # Azure asset detection
             grep -Eio "([a-z0-9.-]+)\.(azurewebsites\.net|azure-api\.net|trafficmanager\.net|blob\.core\.windows\.net|file\.core\.windows\.net|database\.windows\.net)" \
               "results/$TARGET/live.txt" | sort -u > "results/$TARGET/azure_assets.txt" || true
 
@@ -94,12 +99,14 @@ jobs:
                 -o "results/$TARGET/nuclei_azure.txt" || true
             fi
 
+            # JS crawling + key leaks
             if [ -s "results/$TARGET/live.txt" ]; then
               gospider -S "results/$TARGET/live.txt" --js -o "results/$TARGET/spider" || true
               grep -RIE "(AZURE|STORAGE|SAS|SharedAccessSignature|AccountKey|DefaultEndpointsProtocol|AccountName|BlobEndpoint|QueueEndpoint|FileEndpoint|TableEndpoint|InstrumentationKey|SubscriptionKey|x-azure|Bearer\s+[A-Za-z0-9\-_.=]+)" \
                 "results/$TARGET/spider" > "results/$TARGET/key_leaks.txt" || true
             fi
 
+            # Blind payload seeding
             if [ -n "${BXHR:-}" ] && [ -s "results/$TARGET/live.txt" ]; then
               : > "results/$TARGET/blind_seeds.txt"
               while IFS= read -r base; do
@@ -107,20 +114,17 @@ jobs:
                 echo "$base?x=${enc}" >> "results/$TARGET/blind_seeds.txt"
               done < "results/$TARGET/live.txt"
             fi
+
           done < /tmp/domains.txt
 
-      - name: Alert
-        if: always()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-      - name: Git & Push results
+      - name: Git & Push results + Alert
         if: always()
         env:
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           USER_NAME: ${{ secrets.USER_NAME }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -e
           git config --global user.email "${EMAIL_ADDRESS}"
@@ -129,3 +133,8 @@ jobs:
           git commit -m "scans+chains: $(date -u)" --no-verify || echo "No changes"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
           git push origin HEAD:master || true
+
+          # Telegram alert
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="✅ Azure Recon scan for ${{ github.repository }} completed."
