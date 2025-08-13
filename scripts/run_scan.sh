@@ -22,7 +22,8 @@ while read -r ROOT; do
   echo "[+] Subfinder: $ROOT" >&2
   subfinder -silent -all -recursive -d "$ROOT" \
     -sources crtsh,waybackarchive,urlscan,github,shodan,chaos,rapiddns,fofa,alienvault \
-    | sed 's/\r//g' >> tmp/subs_raw.txt || true
+    | sed 's/
+//g' >> tmp/subs_raw.txt || true
   # Also include the apex itself
   echo "$ROOT" >> tmp/subs_raw.txt
 
@@ -64,7 +65,7 @@ else
   fi
   echo "[+] Naabu on allowed ports: $ALLOWED_PORTS" >&2
   cut -d/ -f3 "$RUN_DIR/httpx_live.txt" | cut -d: -f1 | sed 's/^https\?:\/\///' | sort -u > tmp/hosts_alive.txt
-  naabu -host -l tmp/hosts_alive.txt -p "$ALLOWED_PORTS" \
+  naabu -list tmp/hosts_alive.txt -p "$ALLOWED_PORTS" \
     -silent -json -rate 150 -retries 1 -warm-up-time 2 \
     -exclude-cdn -o "$RUN_DIR/naabu.json" || true
 
