@@ -1,4 +1,4 @@
-name: Azure Recon + Lateral Escalation
+name: Azure Recon
 
 on:
   workflow_dispatch:
