@@ -1,0 +1,10 @@
+(^|\.)dev\.
+(^|\.)nonprod\.
+(^|\.)staging\.
+(^|\.)test\.
+(^|\.)qa\.
+(^|\.)sandbox\.
+(^|\.)preprod\.
+(^|\.)preview\.
+(^|\.)int\.
+(^|\.)internal\.
