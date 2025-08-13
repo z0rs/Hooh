@@ -36,7 +36,6 @@ jobs:
       
           # Python tools
           python3 -m pip install --upgrade pip
-          pip3 install git+https://github.com/devanshbatham/azblobcheck.git
 
           # Update templates
           nuclei -update-templates || true
@@ -89,12 +88,6 @@ jobs:
             # Azure asset detection (case-insensitive)
             grep -Eio "(?i)([a-z0-9.-]+)\.(azurewebsites\.net|azure-api\.net|trafficmanager\.net|blob\.core\.windows\.net|file\.core\.windows\.net|database\.windows\.net)" \
               "results/$TARGET/live.txt" | sort -u > "results/$TARGET/azure_assets.txt" || true
-
-            if [ -s "results/$TARGET/azure_assets.txt" ]; then
-              : > "results/$TARGET/blob_results.txt"
-              while IFS= read -r asset; do
-                azblobcheck -u "$asset" >> "results/$TARGET/blob_results.txt" || true
-              done
 
               nuclei -l "results/$TARGET/azure_assets.txt" \
                 -severity low,medium,high,critical \
