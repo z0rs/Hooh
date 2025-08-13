@@ -67,13 +67,13 @@ jobs:
           path: results/
 
       - name: Optional Telegram notify
-        if: ${{ env.HAS_TELEGRAM == 'true' }}
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN && secrets.TELEGRAM_CHAT_ID }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          HAS_TELEGRAM: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' && 'true' || 'false' }}
         run: |
           LAST=$(ls -1 results | tail -n 1)
           MSG="MBOS Safe Hunt done: $LAST"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" -d text="$MSG" >/dev/null
+
