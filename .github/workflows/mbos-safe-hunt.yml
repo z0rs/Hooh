@@ -1,0 +1,75 @@
+name: MBOS Safe Hunt
+
+on:
+  schedule:
+    - cron: '17 2 * * *'  # daily at 02:17 UTC; adjust as needed
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Skip active port scan (only passive + httpx + nuclei)'
+        required: false
+        default: 'false'
+      rate_limit:
+        description: 'Max requests per second for httpx/nuclei'
+        required: false
+        default: '50'
+      severity:
+        description: 'Nuclei severities to include (comma-separated)'
+        required: false
+        default: 'low,medium,high'
+
+jobs:
+  hunt:
+    name: Safe Recon & Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: none
+    env:
+      TZ: Asia/Makassar
+      RATE_LIMIT: ${{ github.event.inputs.rate_limit || '50' }}
+      INCLUDE_SEVERITY: ${{ github.event.inputs.severity || 'low,medium,high' }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Go (for ProjectDiscovery tools)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install tools
+        run: bash scripts/install_tools.sh
+
+      - name: Run safe scan
+        run: bash scripts/run_scan.sh
+
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbos-hunt-${{ github.run_number }}
+          path: results/
+
+      - name: Optional Telegram notify
+        if: ${{ env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          LAST=$(ls -1 results | tail -n 1)
+          MSG="MBOS Safe Hunt done: $LAST"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" -d text="$MSG" >/dev/null
