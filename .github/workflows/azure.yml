@@ -1,4 +1,4 @@
-name: Azure Recon + XSS/SSRF + Lateral Chain
+name: Azure Recon
 
 on:
   push:
