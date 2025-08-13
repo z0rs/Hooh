@@ -6,26 +6,29 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Skip active port scan (only passive + httpx + nuclei)'
+        description: Skip active port scan (only passive + httpx + nuclei)
         required: false
         default: 'false'
       rate_limit:
-        description: 'Max requests per second for httpx/nuclei'
+        description: Max requests per second for httpx/nuclei
         required: false
         default: '50'
       severity:
-        description: 'Nuclei severities to include (comma-separated)'
+        description: Nuclei severities to include (comma-separated)
         required: false
         default: 'low,medium,high'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mbos-safe-hunt
+  cancel-in-progress: false
 
 jobs:
   hunt:
     name: Safe Recon & Scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-      id-token: none
     env:
       TZ: Asia/Makassar
       RATE_LIMIT: ${{ github.event.inputs.rate_limit || '50' }}
@@ -47,7 +50,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') || 'nogosum' }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -64,7 +67,7 @@ jobs:
           path: results/
 
       - name: Optional Telegram notify
-        if: ${{ env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID }}
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
