@@ -89,6 +89,7 @@ jobs:
             grep -Eio "(?i)([a-z0-9.-]+)\.(azurewebsites\.net|azure-api\.net|trafficmanager\.net|blob\.core\.windows\.net|file\.core\.windows\.net|database\.windows\.net)" \
               "results/$TARGET/live.txt" | sort -u > "results/$TARGET/azure_assets.txt" || true
 
+            if [ -s "results/$TARGET/azure_assets.txt" ]; then
               nuclei -l "results/$TARGET/azure_assets.txt" \
                 -severity low,medium,high,critical \
                 -tags cors,ssrf,exposure,azure \
