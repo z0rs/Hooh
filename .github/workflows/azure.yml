@@ -134,7 +134,106 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-[... kode Python sama persis seperti punyamu ...]
+import os, re, json
+
+root = 'results'
+chains = []
+
+re_conn = re.compile(r"(AccountKey|DefaultEndpointsProtocol|AccountName|BlobEndpoint|QueueEndpoint|FileEndpoint|TableEndpoint|SharedAccessSignature|InstrumentationKey|SubscriptionKey|Authorization: Bearer|Bearer\s+[A-Za-z0-9\-_.=]+)", re.I)
+azure_host = re.compile(r".azure(websites|-api).net|blob.core.windows.net|database.windows.net|file.core.windows.net|trafficmanager.net", re.I)
+
+for target in os.listdir(root):
+    tdir = os.path.join(root, target)
+    if not os.path.isdir(tdir):
+        continue
+
+    blob = os.path.join(tdir, 'blob_results.txt')
+    leaks = os.path.join(tdir, 'key_leaks.txt')
+    nuclei = os.path.join(tdir, 'nuclei_azure.txt')
+    dangle = os.path.join(tdir, 'dangling-cname.txt')
+
+    hints = []
+
+    # 1) Public blob
+    if os.path.isfile(blob) and os.path.getsize(blob) > 0:
+        with open(blob, 'r', errors='ignore') as f:
+            data = f.read()
+        if any(x in data.lower() for x in ['public', 'listable', 'writable']):
+            hints.append({
+                'vector': 'Public Blob/File exposure',
+                'next': 'Search for config.json, .env, *.config, web.config to harvest connection strings or keys; try validating against App Service / SQL / Storage.',
+                'evidence_len': len(data)
+            })
+
+    # 2) Key/Token leaks
+    if os.path.isfile(leaks) and os.path.getsize(leaks) > 0:
+        with open(leaks, 'r', errors='ignore') as f:
+            lines = [l.strip() for l in f if re_conn.search(l)]
+        if lines:
+            hints.append({
+                'vector': 'Leaked credentials/tokens in JS/HTML',
+                'next': 'Test with az storage (SAS/keys) or call Azure API Mgmt/App Service using leaked Subscription/Bearer; check Key Vault access via creds.',
+                'samples': lines[:5]
+            })
+
+    # 3) CORS/SSRF
+    sevmap = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+    if os.path.isfile(nuclei) and os.path.getsize(nuclei) > 0:
+        with open(nuclei, 'r', errors='ignore') as f:
+            for line in f:
+                m = re.search(r"(critical|high|medium|low)", line, re.I)
+                if m:
+                    sevmap[m.group(1).lower()] += 1
+                if 'cors' in line.lower() and 'unauth' in line.lower():
+                    hints.append({
+                        'vector': 'CORS wildcard/relaxed + unauth API',
+                        'next': 'Attempt browser-origin data exfil via crafted Origin; combine with token leaks for full account takeover risk.'
+                    })
+                if 'ssrf' in line.lower():
+                    hints.append({
+                        'vector': 'SSRF in Function/Logic/App',
+                        'next': 'Probe IMDS (169.254.169.254) with safe metadata path; look for Managed Identity tokens; escalate to other Azure services.'
+                    })
+
+    # 4) Dangling CNAME
+    if os.path.isfile(dangle) and os.path.getsize(dangle) > 0:
+        with open(dangle, 'r', errors='ignore') as f:
+            lines = [l.strip() for l in f if l.strip()]
+        if lines:
+            hints.append({
+                'vector': 'Dangling CNAME (potential subdomain takeover)',
+                'next': 'Claim the backing service (e.g., Azure Front Door/Traffic Manager/App Service) if allowed; then host phishing/JS to harvest internal cookies/tokens for lateral movement.',
+                'samples': lines[:5]
+            })
+
+    # Build chain suggestions
+    chain_suggestions = []
+    vecs = [h['vector'] for h in hints]
+    if any('Public Blob' in v for v in vecs) and any('Leaked' in v for v in vecs):
+        chain_suggestions.append('Public Blob exposure → download config/.env → recover keys → authenticate to App Service/Storage → data exfil/priv esc (P3→P2).')
+    if any('Leaked' in v for v in vecs) and any('CORS' in v for v in vecs):
+        chain_suggestions.append('Token leak in JS + CORS wildcard → browser-based exfiltration and API abuse across origins (P3→P2).')
+    if any('SSRF' in v for v in vecs):
+        chain_suggestions.append('SSRF → query Azure IMDS → obtain Managed Identity token → access Key Vault/Storage/Service Bus → pivot (P3→P2).')
+    if any('Dangling CNAME' in v for v in vecs):
+        chain_suggestions.append('Takeover subdomain → host collector → session/cookie harvesting → access internal portals/APIs (P3→P2).')
+
+    if hints or chain_suggestions:
+        chains.append({
+            'target': target,
+            'severity_counts': sevmap,
+            'hints': hints,
+            'chain_suggestions': chain_suggestions
+        })
+
+out = {
+    'summary_targets': len(chains),
+    'generated_by': 'azure-hunt-lateral-action',
+    'chains': chains
+}
+print(json.dumps(out, indent=2))
+with open(os.path.join(root, 'chain-report.json'), 'w') as w:
+    json.dump(out, w, indent=2)
 PY
 
       - name: Alert: Telegram Summary + Chain Hints
