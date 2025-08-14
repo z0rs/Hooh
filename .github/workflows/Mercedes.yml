@@ -76,16 +76,145 @@ jobs:
       #     # Update nuclei templates (includes Azure cloud checks)
       #     nuclei -update
 
+      # - name: Start
+      #   env:
+      #     DOMAINS: ${{ secrets.DOMAIN }}
+      #   run: |
+      #     set -euxo pipefail
+
+      #     # Temporary OOS filters (from program brief)
+      #     OOS_REGEX='(^|.*)(odd-nonprod\.dvb\.corpinter\.net\.cn|odd-nonprod\.query\.api\.dvb\.corpinter\.net\.cn)(.*|$)'
+
+      #     # Normalise domain list (comma/semicolon/newline/space separated)
+      #     echo "$DOMAINS" | tr -d '\r' \
+      #       | tr ',;' '\n' \
+      #       | tr '[:space:]' '\n' \
+      #       | sed '/^[[:space:]]*$/d' \
+      #       | sort -u \
+      #       | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+      #           TARGET="$(echo "$TARGET" | xargs)"
+      #           [ -z "$TARGET" ] && continue
+
+      #           # Skip OOS
+      #           if echo "$TARGET" | grep -Eq "$OOS_REGEX"; then
+      #             echo "Skipping OOS target: $TARGET"
+      #             continue
+      #           fi
+
+      #           echo "===> Scanning $TARGET"
+      #           mkdir -p "results/$TARGET"
+      #           WORKDIR="$(mktemp -d)"
+      #           cd "$WORKDIR"
+
+      #           # 1) Subdomain enumeration (passive)
+      #           subfinder -silent -all -recursive -d "$TARGET" -t 50 \
+      #             | sort -u > subs.txt
+
+      #           # 2) Resolve (+A) and alive HTTP probing
+      #           dnsx -silent -a -resp -retries 2 -r 1.1.1.1 -l subs.txt \
+      #             | awk '{print $1}' | sort -u > alive-hosts.txt || true
+
+      #           # httpx probe to get URLs
+      #           httpx -silent -threads 75 -timeout 10 -no-color -follow-host-redirects \
+      #             -l alive-hosts.txt -json -o httpx.jsonl || true
+      #           jq -r '."url"' httpx.jsonl 2>/dev/null | sort -u > urls.txt || true
+
+      #           # 3) Crawl a bit (depth=2) to surface cloud endpoints
+      #           katana -silent -list urls.txt -jc -d 2 -aff -ef woff,woff2,png,jpg,jpeg,gif,svg,css \
+      #             | sort -u > crawled.txt || true
+
+      #           # 4) Historical URLs
+      #           (gau --threads 8 "$TARGET" || true; echo; waybackurls "$TARGET" || true) \
+      #             | sort -u > history.txt
+
+      #           # 5) Combine all discovered URLs
+      #           cat urls.txt crawled.txt history.txt 2>/dev/null \
+      #             | sort -u > allurls.txt || true
+
+      #           # 6) Extract Azure artifacts
+      #           # Blob & DFS accounts (account name = [a-z0-9]{3,24})
+      #           grep -Eoi '([a-z0-9]{3,24})\.blob\.core\.windows\.net' allurls.txt | sort -u > blob_hosts.txt || true
+      #           grep -Eoi '([a-z0-9]{3,24})\.dfs\.core\.windows\.net'  allurls.txt | sort -u > dfs_hosts.txt || true
+      #           grep -Eoi '([a-z0-9-]{3,63})\.web\.core\.windows\.net' allurls.txt | sort -u > webcore_hosts.txt || true
+      #           grep -Eoi '([a-z0-9-]{3,63})\.azurewebsites\.net'     allurls.txt | sort -u > appsvc_hosts.txt || true
+      #           grep -Eoi '([a-z0-9-]{3,63})\.azureedge\.net'         allurls.txt | sort -u > cdn_hosts.txt || true
+
+      #           # 7) Custom Azure checks → findings.txt (severity-tagged)
+      #           : > findings.txt
+
+      #           # 7a) Blob account anonymous container listing
+      #           if [ -s blob_hosts.txt ]; then
+      #             cut -d'.' -f1 blob_hosts.txt | sort -u | while read -r ACC; do
+      #               CODE="$(curl -m 10 -s -o /dev/null -w '%{http_code}' "https://${ACC}.blob.core.windows.net/?comp=list")" || true
+      #               if [ "$CODE" = "200" ]; then
+      #                 echo "[high] Public container listing enabled — https://${ACC}.blob.core.windows.net/?comp=list" | tee -a findings.txt
+      #               fi
+
+      #               # Try common container names for anonymous listing
+      #               for C in public images img uploads media logs static content container assets data backup; do
+      #                 CODE2="$(curl -m 10 -s -o /dev/null -w '%{http_code}' "https://${ACC}.blob.core.windows.net/${C}?restype=container&comp=list")" || true
+      #                 if [ "$CODE2" = "200" ]; then
+      #                   echo "[high] Public blob container '${C}' is listable — https://${ACC}.blob.core.windows.net/${C}?restype=container&comp=list" | tee -a findings.txt
+      #                 fi
+      #               done
+      #             done
+      #           fi
+
+      #           # 7b) Azure App Service Kudu/SCM exposure
+      #           if [ -s appsvc_hosts.txt ]; then
+      #             while read -r H; do
+      #               SCM="https://$(echo "$H" | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')/"
+      #               CODE="$(curl -m 10 -s -o /dev/null -w '%{http_code}' "$SCM")" || true
+      #               # Normal is 401. If 200 or directory index → flag.
+      #               if [ "$CODE" = "200" ]; then
+      #                 echo "[medium] Unexpected open Kudu (SCM) endpoint — ${SCM}" | tee -a findings.txt
+      #               fi
+      #             done < appsvc_hosts.txt
+      #           fi
+
+      #           # 7c) Weak CORS / misc via nuclei templates
+      #           # Limit rate untuk safety; gunakan templates azure + umum
+      #           NUCLEI_TEMPLATES_DIR="$HOME/nuclei-templates"
+      #           nuclei -silent -no-color -rate-limit 150 -bulk-size 50 -timeout 10 \
+      #             -l urls.txt \
+      #             -as \
+      #             -tags azure,cloud,cors,exposure,misconfig \
+      #             -severity critical,high,medium,low,unknown \
+      #             -jsonl -o nuclei.jsonl || true
+
+      #           # Format nuclei output → severity-tagged lines
+      #           if [ -s nuclei.jsonl ]; then
+      #             jq -r 'if .severity then "[" + (.severity|ascii_downcase) + "] " + (.info.name|tostring) + " — " + (.matched-at|tostring) else "[unknown] " + (.info.name|tostring) + " — " + (.matched-at|tostring) end' nuclei.jsonl \
+      #               | sort -u >> findings.txt || true
+      #           fi
+
+      #           # 8) Tulis hasil akhir
+      #           mkdir -p "$GITHUB_WORKSPACE/results/$TARGET"
+      #           if [ -s findings.txt ]; then
+      #             # Dedup & write
+      #             sort -u findings.txt > "$GITHUB_WORKSPACE/results/$TARGET/result.txt"
+      #           else
+      #             # kosongkan hasil kalau nggak ada temuan
+      #             : > "$GITHUB_WORKSPACE/results/$TARGET/result.txt"
+      #           fi
+
+      #           # 9) Simpan artefak tambahan (opsional)
+      #           cp -f subs.txt alive-hosts.txt urls.txt allurls.txt 2>/dev/null || true
+      #           tar -czf "$GITHUB_WORKSPACE/results/$TARGET/artifacts.tgz" subs.txt alive-hosts.txt urls.txt allurls.txt blob_hosts.txt dfs_hosts.txt webcore_hosts.txt appsvc_hosts.txt cdn_hosts.txt 2>/dev/null || true
+
+      #           cd "$GITHUB_WORKSPACE"
+      #           rm -rf "$WORKDIR"
+      #         done
+
+
       - name: Start
         env:
           DOMAINS: ${{ secrets.DOMAIN }}
         run: |
           set -euxo pipefail
 
-          # Temporary OOS filters (from program brief)
           OOS_REGEX='(^|.*)(odd-nonprod\.dvb\.corpinter\.net\.cn|odd-nonprod\.query\.api\.dvb\.corpinter\.net\.cn)(.*|$)'
 
-          # Normalise domain list (comma/semicolon/newline/space separated)
           echo "$DOMAINS" | tr -d '\r' \
             | tr ',;' '\n' \
             | tr '[:space:]' '\n' \
@@ -93,6 +222,10 @@ jobs:
             | sort -u \
             | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
                 TARGET="$(echo "$TARGET" | xargs)"
+
+                # Hapus wildcard di depan seperti *.example.com → example.com
+                TARGET="$(echo "$TARGET" | sed -E 's/^\*\.*//')"
+
                 [ -z "$TARGET" ] && continue
 
                 # Skip OOS
@@ -106,20 +239,25 @@ jobs:
                 WORKDIR="$(mktemp -d)"
                 cd "$WORKDIR"
 
-                # 1) Subdomain enumeration (passive)
+                # 1) Subdomain enumeration
                 subfinder -silent -all -recursive -d "$TARGET" -t 50 \
                   | sort -u > subs.txt
 
-                # 2) Resolve (+A) and alive HTTP probing
+                # Kalau wildcard, tambahkan domain root ke daftar
+                if ! grep -q "^$TARGET$" subs.txt; then
+                  echo "$TARGET" >> subs.txt
+                  sort -u -o subs.txt subs.txt
+                fi
+
+                # 2) Resolve + Alive check
                 dnsx -silent -a -resp -retries 2 -r 1.1.1.1 -l subs.txt \
                   | awk '{print $1}' | sort -u > alive-hosts.txt || true
 
-                # httpx probe to get URLs
                 httpx -silent -threads 75 -timeout 10 -no-color -follow-host-redirects \
                   -l alive-hosts.txt -json -o httpx.jsonl || true
                 jq -r '."url"' httpx.jsonl 2>/dev/null | sort -u > urls.txt || true
 
-                # 3) Crawl a bit (depth=2) to surface cloud endpoints
+                # 3) Crawl
                 katana -silent -list urls.txt -jc -d 2 -aff -ef woff,woff2,png,jpg,jpeg,gif,svg,css \
                   | sort -u > crawled.txt || true
 
@@ -127,30 +265,27 @@ jobs:
                 (gau --threads 8 "$TARGET" || true; echo; waybackurls "$TARGET" || true) \
                   | sort -u > history.txt
 
-                # 5) Combine all discovered URLs
+                # 5) Combine URLs
                 cat urls.txt crawled.txt history.txt 2>/dev/null \
                   | sort -u > allurls.txt || true
 
-                # 6) Extract Azure artifacts
-                # Blob & DFS accounts (account name = [a-z0-9]{3,24})
+                # 6) Azure artifacts
                 grep -Eoi '([a-z0-9]{3,24})\.blob\.core\.windows\.net' allurls.txt | sort -u > blob_hosts.txt || true
                 grep -Eoi '([a-z0-9]{3,24})\.dfs\.core\.windows\.net'  allurls.txt | sort -u > dfs_hosts.txt || true
                 grep -Eoi '([a-z0-9-]{3,63})\.web\.core\.windows\.net' allurls.txt | sort -u > webcore_hosts.txt || true
                 grep -Eoi '([a-z0-9-]{3,63})\.azurewebsites\.net'     allurls.txt | sort -u > appsvc_hosts.txt || true
                 grep -Eoi '([a-z0-9-]{3,63})\.azureedge\.net'         allurls.txt | sort -u > cdn_hosts.txt || true
 
-                # 7) Custom Azure checks → findings.txt (severity-tagged)
+                # 7) Findings
                 : > findings.txt
 
-                # 7a) Blob account anonymous container listing
+                # 7a) Blob check
                 if [ -s blob_hosts.txt ]; then
                   cut -d'.' -f1 blob_hosts.txt | sort -u | while read -r ACC; do
                     CODE="$(curl -m 10 -s -o /dev/null -w '%{http_code}' "https://${ACC}.blob.core.windows.net/?comp=list")" || true
                     if [ "$CODE" = "200" ]; then
                       echo "[high] Public container listing enabled — https://${ACC}.blob.core.windows.net/?comp=list" | tee -a findings.txt
                     fi
-
-                    # Try common container names for anonymous listing
                     for C in public images img uploads media logs static content container assets data backup; do
                       CODE2="$(curl -m 10 -s -o /dev/null -w '%{http_code}' "https://${ACC}.blob.core.windows.net/${C}?restype=container&comp=list")" || true
                       if [ "$CODE2" = "200" ]; then
@@ -160,20 +295,18 @@ jobs:
                   done
                 fi
 
-                # 7b) Azure App Service Kudu/SCM exposure
+                # 7b) Kudu exposure
                 if [ -s appsvc_hosts.txt ]; then
                   while read -r H; do
                     SCM="https://$(echo "$H" | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')/"
                     CODE="$(curl -m 10 -s -o /dev/null -w '%{http_code}' "$SCM")" || true
-                    # Normal is 401. If 200 or directory index → flag.
                     if [ "$CODE" = "200" ]; then
                       echo "[medium] Unexpected open Kudu (SCM) endpoint — ${SCM}" | tee -a findings.txt
                     fi
                   done < appsvc_hosts.txt
                 fi
 
-                # 7c) Weak CORS / misc via nuclei templates
-                # Limit rate untuk safety; gunakan templates azure + umum
+                # 7c) Nuclei scan
                 NUCLEI_TEMPLATES_DIR="$HOME/nuclei-templates"
                 nuclei -silent -no-color -rate-limit 150 -bulk-size 50 -timeout 10 \
                   -l urls.txt \
@@ -182,23 +315,19 @@ jobs:
                   -severity critical,high,medium,low,unknown \
                   -jsonl -o nuclei.jsonl || true
 
-                # Format nuclei output → severity-tagged lines
                 if [ -s nuclei.jsonl ]; then
                   jq -r 'if .severity then "[" + (.severity|ascii_downcase) + "] " + (.info.name|tostring) + " — " + (.matched-at|tostring) else "[unknown] " + (.info.name|tostring) + " — " + (.matched-at|tostring) end' nuclei.jsonl \
                     | sort -u >> findings.txt || true
                 fi
 
-                # 8) Tulis hasil akhir
+                # 8) Output results
                 mkdir -p "$GITHUB_WORKSPACE/results/$TARGET"
                 if [ -s findings.txt ]; then
-                  # Dedup & write
                   sort -u findings.txt > "$GITHUB_WORKSPACE/results/$TARGET/result.txt"
                 else
-                  # kosongkan hasil kalau nggak ada temuan
-                  : > "$GITHUB_WORKSPACE/results/$TARGET/result.txt"
+                  echo "[info] No findings for $TARGET" > "$GITHUB_WORKSPACE/results/$TARGET/result.txt"
                 fi
 
-                # 9) Simpan artefak tambahan (opsional)
                 cp -f subs.txt alive-hosts.txt urls.txt allurls.txt 2>/dev/null || true
                 tar -czf "$GITHUB_WORKSPACE/results/$TARGET/artifacts.tgz" subs.txt alive-hosts.txt urls.txt allurls.txt blob_hosts.txt dfs_hosts.txt webcore_hosts.txt appsvc_hosts.txt cdn_hosts.txt 2>/dev/null || true
 
