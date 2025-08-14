@@ -1,0 +1,138 @@
+i.mbos.mercedes-benz.com
+mats-dev.mbos.mercedes-benz.com
+dma-nonprod.mbos.mercedes-benz.com
+caas.oneweb.mbos.mercedes-benz.com
+www.mbos.mercedes-benz.com
+fls.mbos.mercedes-benz.com
+p.mbos.mercedes-benz.com
+test.mbos.mercedes-benz.com
+s3.mbos.mercedes-benz.com
+portal-nonprod.mbos.mercedes-benz.com
+t.mbos.mercedes-benz.com
+sys.caas.oneweb.mbos.mercedes-benz.com
+test-entry-2.mbos.mercedes-benz.com
+design.mbos.mercedes-benz.com
+euc1.sys.caas.oneweb.mbos.mercedes-benz.com
+test-entry.mbos.mercedes-benz.com
+test-entry-1.mbos.mercedes-benz.com
+nprd.euc1.sys.caas.oneweb.mbos.mercedes-benz.com
+dev.mbos.mercedes-benz.com
+oneweb.mbos.mercedes-benz.com
+portal-dev.mbos.mercedes-benz.com
+mbos.mercedes-benz.com
+docs.mbos.mercedes-benz.com
+mats.mbos.mercedes-benz.com
+com.mbos.mercedes-benz.com
+docs-internal.mbos.mercedes-benz.com
+portal.mbos.mercedes-benz.com
+mats-nonprod.mbos.mercedes-benz.com
+{"compute":{"azEnvironment":"AzurePublicCloud","customData":"","evictionPolicy":"","isHostCompatibilityLayerVm":"false","licenseType":"","location":"eastus","name":"474kh3UGIhGoN2","offer":"","osProfile":{"adminUsername":"","computerName":"","disablePasswordAuthentication":""},"osType":"Linux","placementGroupId":"","plan":{"name":"","product":"","publisher":""},"platformFaultDomain":"0","platformUpdateDomain":"0","priority":"","provider":"Microsoft.Compute","publicKeys":[],"publisher":"","resourceGroupName":"azure-eastus-general-7fce94c9-34a9-4f73-995b-358055c1a70f","resourceId":"/subscriptions/7fce94c9-34a9-4f73-995b-358055c1a70f/resourceGroups/azure-eastus-general-7fce94c9-34a9-4f73-995b-358055c1a70f/providers/Microsoft.Compute/virtualMachines/474kh3UGIhGoN2","securityProfile":{"secureBootEnabled":"false","virtualTpmEnabled":"false"},"sku":"","storageProfile":{"dataDisks":[],"imageReference":{"id":"/subscriptions/0019feaf-6e36-4d23-acbf-b53de156cae2/resourceGroups/hostedcomputeims-403500522-rg/providers/Microsoft.Compute/galleries/imsgallery.403500522/images/image-2295-gen1-sp/versions/20250804.2.0","offer":"","publisher":"","sku":"","version":""},"osDisk":{"caching":"ReadOnly","createOption":"FromImage","diffDiskSettings":{"option":"Local"},"diskSizeGB":"75","encryptionSettings":{"enabled":"false"},"image":{"uri":""},"managedDisk":{"id":"/subscriptions/7fce94c9-34a9-4f73-995b-358055c1a70f/resourceGroups/azure-eastus-general-7fce94c9-34a9-4f73-995b-358055c1a70f/providers/Microsoft.Compute/disks/474kh3UGIhGoN2-disk","storageAccountType":"Standard_LRS"},"name":"474kh3UGIhGoN2-disk","osType":"Linux","vhd":{"uri":""},"writeAcceleratorEnabled":"false"},"resourceDisk":{"size":"201728"}},"subscriptionId":"7fce94c9-34a9-4f73-995b-358055c1a70f","tags":"OperatorOverridableTenantSettings.Tenant.Setting.BypassCmPeSyncForRepaves:True;SkipASMAV:true;SkipASMAzSecPack:true;SkipASMAzSecPackAutoConfig:true;SkipLinuxAzSecPack:true;SkipWindowsAzSecPack:true;azsecpack:true;hosted_on_behalf_of:true","tagsList":[{"name":"OperatorOverridableTenantSettings.Tenant.Setting.BypassCmPeSyncForRepaves","value":"True"},{"name":"SkipASMAV","value":"true"},{"name":"SkipASMAzSecPack","value":"true"},{"name":"SkipASMAzSecPackAutoConfig","value":"true"},{"name":"SkipLinuxAzSecPack","value":"true"},{"name":"SkipWindowsAzSecPack","value":"true"},{"name":"azsecpack","value":"true"},{"name":"hosted_on_behalf_of","value":"true"}],"userData":"","version":"20250804.2.0","vmId":"77f2a6bb-bd20-4998-8089-474fd6997b45","vmScaleSetName":"","vmSize":"Standard_D4ads_v5","zone":""},"network":{"interface":[{"ipv4":{"ipAddress":[{"privateIpAddress":"10.1.0.177","publicIpAddress":""}],"subnet":[{"address":"10.1.0.0","prefix":"20"}]},"ipv6":{"ipAddress":[]},"macAddress":"7CED8D1758A3"}]}}docs.mbos.mercedes-benz.com:443
+mats-nonprod.mbos.mercedes-benz.com:443
+portal-dev.mbos.mercedes-benz.com:443
+portal-nonprod.mbos.mercedes-benz.com:443
+mats-dev.mbos.mercedes-benz.com:443
+mats.mbos.mercedes-benz.com:443
+design.mbos.mercedes-benz.com:443
+design.mbos.mercedes-benz.com:80
+portal.mbos.mercedes-benz.com:443
+mbos.mercedes-benz.com:80
+mbos.mercedes-benz.com:443
+docs-internal.mbos.mercedes-benz.com:443
+[http-missing-security-headers:cross-origin-resource-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:content-security-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:x-frame-options] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:referrer-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:cross-origin-embedder-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:cross-origin-opener-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:permissions-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:x-content-type-options] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:x-permitted-cross-domain-policies] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:clear-site-data] [http] [info] https://docs-internal.mbos.mercedes-benz.com/oauth/authorize?state=9e27502e-8739-451d-baef-c024d82d14ad
+[http-missing-security-headers:x-frame-options] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:x-content-type-options] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:x-permitted-cross-domain-policies] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:referrer-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:clear-site-data] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:cross-origin-embedder-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:content-security-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:permissions-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:content-type-charset-specification] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:cross-origin-opener-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:cross-origin-resource-policy] [http] [info] https://docs-internal.mbos.mercedes-benz.com
+[http-missing-security-headers:x-frame-options] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:x-content-type-options] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:x-permitted-cross-domain-policies] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:clear-site-data] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:cross-origin-opener-policy] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:cross-origin-resource-policy] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:permissions-policy] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:referrer-policy] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:cross-origin-embedder-policy] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:content-security-policy] [http] [info] https://docs.mbos.mercedes-benz.com/oauth/authorize?state=b7d6c40f-ae45-4f7f-b6c2-fde3b22540e6&trace_id=0&span_id=0
+[http-missing-security-headers:x-frame-options] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:x-content-type-options] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:x-permitted-cross-domain-policies] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:referrer-policy] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:clear-site-data] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:cross-origin-embedder-policy] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:content-type-charset-specification] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:permissions-policy] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:cross-origin-opener-policy] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:cross-origin-resource-policy] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:content-security-policy] [http] [info] https://docs.mbos.mercedes-benz.com
+[http-missing-security-headers:cross-origin-embedder-policy] [http] [info] https://mats.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-opener-policy] [http] [info] https://mats.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-resource-policy] [http] [info] https://mats.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:permissions-policy] [http] [info] https://mats.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:clear-site-data] [http] [info] https://mats.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-resource-policy] [http] [info] https://mats-nonprod.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:permissions-policy] [http] [info] https://mats-nonprod.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:clear-site-data] [http] [info] https://mats-nonprod.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-embedder-policy] [http] [info] https://mats-nonprod.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-opener-policy] [http] [info] https://mats-nonprod.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:permissions-policy] [http] [info] https://mats-dev.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:clear-site-data] [http] [info] https://mats-dev.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-embedder-policy] [http] [info] https://mats-dev.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-opener-policy] [http] [info] https://mats-dev.mbos.mercedes-benz.com/cookie-consent
+[http-missing-security-headers:cross-origin-resource-policy] [http] [info] https://mats-dev.mbos.mercedes-benz.com/cookie-consent
+caas.oneweb.mbos.mercedes-benz.com
+com.mbos.mercedes-benz.com
+design.mbos.mercedes-benz.com
+dev.mbos.mercedes-benz.com
+dma-nonprod.mbos.mercedes-benz.com
+docs-internal.mbos.mercedes-benz.com
+docs.mbos.mercedes-benz.com
+euc1.sys.caas.oneweb.mbos.mercedes-benz.com
+fls.mbos.mercedes-benz.com
+i.mbos.mercedes-benz.com
+mats-dev.mbos.mercedes-benz.com
+mats-nonprod.mbos.mercedes-benz.com
+mats.mbos.mercedes-benz.com
+mbos.mercedes-benz.com
+nprd.euc1.sys.caas.oneweb.mbos.mercedes-benz.com
+oneweb.mbos.mercedes-benz.com
+p.mbos.mercedes-benz.com
+portal-dev.mbos.mercedes-benz.com
+portal-nonprod.mbos.mercedes-benz.com
+portal.mbos.mercedes-benz.com
+s3.mbos.mercedes-benz.com
+sys.caas.oneweb.mbos.mercedes-benz.com
+t.mbos.mercedes-benz.com
+test-entry-1.mbos.mercedes-benz.com
+test-entry-2.mbos.mercedes-benz.com
+test-entry.mbos.mercedes-benz.com
+test.mbos.mercedes-benz.com
+www.mbos.mercedes-benz.com
+design.mbos.mercedes-benz.com
+dma-nonprod.mbos.mercedes-benz.com
+docs-internal.mbos.mercedes-benz.com
+mats.mbos.mercedes-benz.com
+mats-nonprod.mbos.mercedes-benz.com
+mats-dev.mbos.mercedes-benz.com
+portal-nonprod.mbos.mercedes-benz.com
+docs.mbos.mercedes-benz.com
+test-entry-1.mbos.mercedes-benz.com
+portal-dev.mbos.mercedes-benz.com
+test-entry-2.mbos.mercedes-benz.com
+test-entry.mbos.mercedes-benz.com
+portal.mbos.mercedes-benz.com
