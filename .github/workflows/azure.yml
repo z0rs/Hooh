@@ -1,0 +1,237 @@
+name: Mercedes-Benz Azure Pentest
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  azure-pentest:
+    runs-on: ubuntu-latest
+    container:
+      image: secsi/cloudsploit:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup environment
+        shell: bash
+        env:
+          DOMAINS: ${{ secrets.DOMAIN }}
+        run: |
+          mkdir -p results
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+              mkdir -p "results/$TARGET"
+            done
+
+      - name: Subdomain enumeration
+        shell: bash
+        env:
+          DOMAINS: ${{ secrets.DOMAIN }}
+        run: |
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+              
+              # Subfinder for subdomain discovery
+              subfinder -d "$TARGET" -silent -o "results/$TARGET/subfinder.txt"
+              
+              # Amass for additional subdomains
+              amass enum -passive -d "$TARGET" -o "results/$TARGET/amass.txt"
+              
+              # Combine and deduplicate results
+              cat "results/$TARGET/subfinder.txt" "results/$TARGET/amass.txt" | sort -u > "results/$TARGET/subdomains.txt"
+              
+              # Check for Azure-specific services
+              cat "results/$TARGET/subdomains.txt" | grep -E '\.blob\.core\.windows\.net|\.azurewebsites\.net|\.cloudapp\.azure\.com' > "results/$TARGET/azure_services.txt"
+            done
+
+      - name: Port scanning with Naabu
+        shell: bash
+        env:
+          DOMAINS: ${{ secrets.DOMAIN }}
+        run: |
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+              
+              # Fast port scan for common Azure ports
+              naabu -list "results/$TARGET/subdomains.txt" -top-ports 100 -o "results/$TARGET/naabu.txt"
+              
+              # Full port scan on critical hosts
+              if grep -q -E '(api|admin|portal|auth|login)' "results/$TARGET/subdomains.txt"; then
+                naabu -list "results/$TARGET/subdomains.txt" -p- -o "results/$TARGET/naabu_full.txt"
+              fi
+            done
+
+      - name: Azure-specific checks
+        shell: bash
+        env:
+          DOMAINS: ${{ secrets.DOMAIN }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+              
+              # Check for open Azure Storage accounts
+              nuclei -l "results/$TARGET/subdomains.txt" -t azure-storage-account-open.yaml -o "results/$TARGET/nuclei_azure_storage.txt"
+              
+              # Check for Azure App Service vulnerabilities
+              nuclei -l "results/$TARGET/subdomains.txt" -t azure-app-service.yaml -o "results/$TARGET/nuclei_azure_appservice.txt"
+              
+              # Run CloudSploit for Azure security checks
+              if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_CLIENT_SECRET" ] && [ -n "$AZURE_TENANT_ID" ]; then
+                cloudsploit --azure-client-id "$AZURE_CLIENT_ID" \
+                          --azure-client-secret "$AZURE_CLIENT_SECRET" \
+                          --azure-tenant-id "$AZURE_TENANT_ID" \
+                          --compliance cis \
+                          --output json > "results/$TARGET/cloudsploit.json"
+              fi
+              
+              # Check for exposed Azure metadata endpoints
+              curl -s "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -H "Metadata: true" > "results/$TARGET/azure_metadata.txt" || true
+            done
+
+      - name: Vulnerability scanning with Nuclei
+        shell: bash
+        env:
+          DOMAINS: ${{ secrets.DOMAIN }}
+        run: |
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+              
+              # Run Nuclei with all templates
+              nuclei -l "results/$TARGET/subdomains.txt" -severity critical,high,medium -o "results/$TARGET/nuclei_results.txt"
+              
+              # Check for common web vulnerabilities
+              nuclei -l "results/$TARGET/subdomains.txt" -t vulnerabilities/ -o "results/$TARGET/nuclei_vulnerabilities.txt"
+              
+              # Check for misconfigurations
+              nuclei -l "results/$TARGET/subdomains.txt" -t misconfiguration/ -o "results/$TARGET/nuclei_misconfigurations.txt"
+            done
+
+      - name: Consolidate results
+        shell: bash
+        env:
+          DOMAINS: ${{ secrets.DOMAIN }}
+        run: |
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+              
+              # Combine all results into one file
+              cat "results/$TARGET/"*.txt > "results/$TARGET/combined_results.txt" 2>/dev/null || true
+              
+              # Create a summary file
+              {
+                echo "=== Subdomains ==="
+                cat "results/$TARGET/subdomains.txt" 2>/dev/null || echo "No subdomains found"
+                echo ""
+                echo "=== Open Ports ==="
+                cat "results/$TARGET/naabu.txt" 2>/dev/null || echo "No open ports found"
+                echo ""
+                echo "=== Critical Findings ==="
+                grep -i "\[critical\]" "results/$TARGET/combined_results.txt" 2>/dev/null || echo "No critical findings"
+                echo ""
+                echo "=== High Findings ==="
+                grep -i "\[high\]" "results/$TARGET/combined_results.txt" 2>/dev/null || echo "No high findings"
+              } > "results/$TARGET/result.txt"
+            done
+
+      - name: Alert findings
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DOMAINS: ${{ secrets.DOMAIN }}
+        run: |
+          echo "$DOMAINS" | tr -d '\r' \
+            | tr ',;' '\n' \
+            | tr '[:space:]' '\n' \
+            | sed '/^[[:space:]]*$/d' \
+            | sort -u \
+            | while IFS= read -r TARGET || [ -n "$TARGET" ]; do
+              TARGET=$(echo "$TARGET" | xargs)
+              [ -z "$TARGET" ] && continue
+
+              if [ -s "results/$TARGET/result.txt" ]; then
+                declare -A SEV_EMOJI=(
+                  ["critical"]="🚨 Critical"
+                  ["high"]="🔴 High"
+                  ["medium"]="🟠 Medium"
+                  ["low"]="🟢 Low"
+                  ["unknown"]="❓ Unknown"
+                )
+                for sev in critical high medium low unknown; do
+                  grep -i "\[$sev\]" "results/$TARGET/result.txt" | while IFS= read -r line; do
+                    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                      -d chat_id="${TELEGRAM_CHAT_ID}" \
+                      --data-urlencode "text=${SEV_EMOJI[$sev]} | $line"
+                    sleep 0.5
+                  done
+                done
+              else
+                curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                  -d chat_id="${TELEGRAM_CHAT_ID}" \
+                  -d text="✅ Scan done for: $TARGET — No vulnerabilities found."
+              fi
+            done
+
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: pentest-results
+          path: results/
+          retention-days: 7
+
+      - name: Git & Push results
+        if: always()
+        env:
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          USER_NAME: ${{ secrets.USER_NAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config --global user.email "${EMAIL_ADDRESS}"
+          git config --global user.name "${USER_NAME}"
+          git add results/ || true
+          git commit -m "scans/results: $(date -u)" --no-verify || echo "No changes to commit"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
+          git push origin HEAD:master || true
