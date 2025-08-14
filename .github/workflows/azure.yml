@@ -12,6 +12,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpcap-dev \
+            build-essential \
+            golang \
+            jq \
+            curl \
+            npm
+
       - name: Install security tools
         run: |
           # Install Go (required for some tools)
@@ -37,9 +48,6 @@ jobs:
 
           # Install CloudSploit
           npm install -g cloudsploit
-
-          # Install jq for JSON processing
-          sudo apt-get install -y jq curl
 
       - name: Setup environment
         shell: bash
