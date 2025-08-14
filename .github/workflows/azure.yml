@@ -7,12 +7,39 @@ on:
 jobs:
   azure-pentest:
     runs-on: ubuntu-latest
-    container:
-      image: secsi/cloudsploit:latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Install security tools
+        run: |
+          # Install Go (required for some tools)
+          sudo apt-get update
+          sudo apt-get install -y golang
+
+          # Install Subfinder
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          sudo mv ~/go/bin/subfinder /usr/local/bin/
+
+          # Install Amass
+          go install -v github.com/owasp-amass/amass/v3/...@master
+          sudo mv ~/go/bin/amass /usr/local/bin/
+
+          # Install Nuclei
+          go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+          sudo mv ~/go/bin/nuclei /usr/local/bin/
+          nuclei -update-templates
+
+          # Install Naabu
+          go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+          sudo mv ~/go/bin/naabu /usr/local/bin/
+
+          # Install CloudSploit
+          npm install -g cloudsploit
+
+          # Install jq for JSON processing
+          sudo apt-get install -y jq curl
 
       - name: Setup environment
         shell: bash
@@ -55,7 +82,7 @@ jobs:
               cat "results/$TARGET/subfinder.txt" "results/$TARGET/amass.txt" | sort -u > "results/$TARGET/subdomains.txt"
               
               # Check for Azure-specific services
-              cat "results/$TARGET/subdomains.txt" | grep -E '\.blob\.core\.windows\.net|\.azurewebsites\.net|\.cloudapp\.azure\.com' > "results/$TARGET/azure_services.txt"
+              grep -E '\.blob\.core\.windows\.net|\.azurewebsites\.net|\.cloudapp\.azure\.com' "results/$TARGET/subdomains.txt" > "results/$TARGET/azure_services.txt" || true
             done
 
       - name: Port scanning with Naabu
@@ -73,11 +100,11 @@ jobs:
               [ -z "$TARGET" ] && continue
               
               # Fast port scan for common Azure ports
-              naabu -list "results/$TARGET/subdomains.txt" -top-ports 100 -o "results/$TARGET/naabu.txt"
+              naabu -list "results/$TARGET/subdomains.txt" -top-ports 100 -o "results/$TARGET/naabu.txt" || true
               
               # Full port scan on critical hosts
               if grep -q -E '(api|admin|portal|auth|login)' "results/$TARGET/subdomains.txt"; then
-                naabu -list "results/$TARGET/subdomains.txt" -p- -o "results/$TARGET/naabu_full.txt"
+                naabu -list "results/$TARGET/subdomains.txt" -p- -o "results/$TARGET/naabu_full.txt" || true
               fi
             done
 
@@ -99,10 +126,10 @@ jobs:
               [ -z "$TARGET" ] && continue
               
               # Check for open Azure Storage accounts
-              nuclei -l "results/$TARGET/subdomains.txt" -t azure-storage-account-open.yaml -o "results/$TARGET/nuclei_azure_storage.txt"
+              nuclei -l "results/$TARGET/subdomains.txt" -t azure-storage-account-open.yaml -o "results/$TARGET/nuclei_azure_storage.txt" || true
               
               # Check for Azure App Service vulnerabilities
-              nuclei -l "results/$TARGET/subdomains.txt" -t azure-app-service.yaml -o "results/$TARGET/nuclei_azure_appservice.txt"
+              nuclei -l "results/$TARGET/subdomains.txt" -t azure-app-service.yaml -o "results/$TARGET/nuclei_azure_appservice.txt" || true
               
               # Run CloudSploit for Azure security checks
               if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_CLIENT_SECRET" ] && [ -n "$AZURE_TENANT_ID" ]; then
@@ -110,7 +137,7 @@ jobs:
                           --azure-client-secret "$AZURE_CLIENT_SECRET" \
                           --azure-tenant-id "$AZURE_TENANT_ID" \
                           --compliance cis \
-                          --output json > "results/$TARGET/cloudsploit.json"
+                          --output json > "results/$TARGET/cloudsploit.json" || true
               fi
               
               # Check for exposed Azure metadata endpoints
@@ -132,13 +159,13 @@ jobs:
               [ -z "$TARGET" ] && continue
               
               # Run Nuclei with all templates
-              nuclei -l "results/$TARGET/subdomains.txt" -severity critical,high,medium -o "results/$TARGET/nuclei_results.txt"
+              nuclei -l "results/$TARGET/subdomains.txt" -severity critical,high,medium -o "results/$TARGET/nuclei_results.txt" || true
               
               # Check for common web vulnerabilities
-              nuclei -l "results/$TARGET/subdomains.txt" -t vulnerabilities/ -o "results/$TARGET/nuclei_vulnerabilities.txt"
+              nuclei -l "results/$TARGET/subdomains.txt" -t vulnerabilities/ -o "results/$TARGET/nuclei_vulnerabilities.txt" || true
               
               # Check for misconfigurations
-              nuclei -l "results/$TARGET/subdomains.txt" -t misconfiguration/ -o "results/$TARGET/nuclei_misconfigurations.txt"
+              nuclei -l "results/$TARGET/subdomains.txt" -t misconfiguration/ -o "results/$TARGET/nuclei_misconfigurations.txt" || true
             done
 
       - name: Consolidate results
