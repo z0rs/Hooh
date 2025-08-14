@@ -1,0 +1,14 @@
+design.mbos.mercedes-benz.com
+dma-nonprod.mbos.mercedes-benz.com
+docs-internal.mbos.mercedes-benz.com
+docs.mbos.mercedes-benz.com
+mats-dev.mbos.mercedes-benz.com
+mats-nonprod.mbos.mercedes-benz.com
+mats.mbos.mercedes-benz.com
+mbos.mercedes-benz.com
+portal-dev.mbos.mercedes-benz.com
+portal-nonprod.mbos.mercedes-benz.com
+portal.mbos.mercedes-benz.com
+test-entry-1.mbos.mercedes-benz.com
+test-entry-2.mbos.mercedes-benz.com
+test-entry.mbos.mercedes-benz.com
