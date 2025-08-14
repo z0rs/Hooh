@@ -20,26 +20,61 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y jq curl git unzip build-essential golang-go parallel ca-certificates libpcap-dev
-          # Go bin into PATH
-          echo "GOBIN=$HOME/go/bin" >> $GITHUB_ENV
-          echo "$HOME/go/bin" >> $GITHUB_PATH
+          sudo apt-get install -y jq curl git unzip parallel ca-certificates libpcap-dev
 
-          # ProjectDiscovery core
-          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
-          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-          go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-          go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+          install_pd_tool() {
+            local repo="$1"
+            local bin_name="$2"
+            local latest_tag clean_version
+            latest_tag=$(curl -s https://api.github.com/repos/projectdiscovery/${repo}/releases/latest | jq -r '.tag_name')
+            clean_version=${latest_tag#v}
+            wget -q https://github.com/projectdiscovery/${repo}/releases/download/${latest_tag}/${bin_name}_${clean_version}_linux_amd64.zip
+            unzip -o ${bin_name}_${clean_version}_linux_amd64.zip
+            sudo mv ${bin_name} /usr/local/bin/
+            rm -f ${bin_name}_${clean_version}_linux_amd64.zip
+          }
 
-          # URL collectors & text tools
+          echo "[*] Installing ProjectDiscovery tools (latest releases)..."
+          install_pd_tool nuclei nuclei
+          install_pd_tool subfinder subfinder
+          install_pd_tool dnsx dnsx
+          install_pd_tool httpx httpx
+          install_pd_tool naabu naabu
+          install_pd_tool katana katana
+
+          echo "[*] Installing other Go-based helpers..."
           go install -v github.com/lc/gau/v2/cmd/gau@latest
           go install -v github.com/tomnomnom/waybackurls@latest
           go install -v github.com/tomnomnom/anew@latest
+          sudo mv $HOME/go/bin/* /usr/local/bin/ || true
 
-          # Update nuclei templates (includes Azure cloud checks)
-          nuclei -update
+          echo "[*] Updating nuclei templates..."
+          nuclei -update        
+
+      # - name: Install toolchain (ProjectDiscovery + helpers)
+      #   run: |
+      #     set -euxo pipefail
+      #     sudo apt-get update
+      #     sudo apt-get install -y jq curl git unzip build-essential golang-go parallel ca-certificates libpcap-dev
+      #     # Go bin into PATH
+      #     echo "GOBIN=$HOME/go/bin" >> $GITHUB_ENV
+      #     echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      #     # ProjectDiscovery core
+      #     go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+      #     go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+      #     go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+      #     go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+      #     go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+      #     go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+
+      #     # URL collectors & text tools
+      #     go install -v github.com/lc/gau/v2/cmd/gau@latest
+      #     go install -v github.com/tomnomnom/waybackurls@latest
+      #     go install -v github.com/tomnomnom/anew@latest
+
+      #     # Update nuclei templates (includes Azure cloud checks)
+      #     nuclei -update
 
       # - name: Start
       #   env:
