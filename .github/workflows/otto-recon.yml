@@ -141,7 +141,3 @@ jobs:
             recon/alive.subs.txt
             recon/httpx.in-scope.txt
             recon/urls.in-scope.txt
-EOF
-
-echo "Prepared $OUT_DIR with checklists. Review manually with UA: $UA"
-#BASH
