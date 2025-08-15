@@ -1,19 +1,12 @@
-# =============================
-# File: .github/workflows/otto-recon.yml
-# Purpose: Passive/low-impact recon for YesWeHack Otto.de program
-# Notes:
-#  - Complies with program rules (no intrusive scans, no mass requests, no automated vuln scanners)
-#  - Only queries in-scope assets, excludes explicitly out-of-scope paths/domains
-#  - Uses custom User-Agent as requested by program
-#  - Output artifacts are uploaded for review
-# =============================
-
-name: otto-recon
+name: Mercedes-Benz
 
 on:
+  push:
+    branches:
+      - master  # ganti sesuai branch default repo kamu
   workflow_dispatch:
     inputs:
-      ywh_username:
+      ywh_username: 
         description: "Your YesWeHack username to append in the UA (e.g., 0x3n0)"
         required: true
         default: "0x3n0"
