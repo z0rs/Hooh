@@ -141,59 +141,6 @@ jobs:
             recon/alive.subs.txt
             recon/httpx.in-scope.txt
             recon/urls.in-scope.txt
-
-# =============================
-# File: scripts/next-steps.sh (optional helper)
-# Make executable and run locally to prepare a clean report skeleton.
-# =============================
-#
-# Usage: ./scripts/next-steps.sh "0x3n0" recon/urls.in-scope.txt
-#
-# This script will:
-#  - Create a minimal report template for each interesting path pattern
-#  - Remind to redact PII and avoid disallowed actions per program rules
-#
-# ----- START OF SCRIPT -----
-#
-#: <<'BASH'
-#!/usr/bin/env bash
-set -euo pipefail
-USER="${1:-0x3n0}"
-URLS_FILE="${2:-recon/urls.in-scope.txt}"
-UA="Bug-Bounty-Hunter-#${USER}#"
-OUT_DIR="reports"
-mkdir -p "$OUT_DIR"
-
-if [[ ! -s "$URLS_FILE" ]]; then
-  echo "No URLs found: $URLS_FILE" >&2
-  exit 1
-fi
-
-# Pick some patterns worth manual review
-grep -Ei '\\?(id|token|redirect|next|return|callback|code|state|lang|file|path|download|api|v1|v2|search|q=)' "$URLS_FILE" \
-  | sort -u | head -n 200 > "$OUT_DIR/interesting-urls.txt"
-
-cat > "$OUT_DIR/README.md" <<EOF
-# Otto.de – Manual Review Checklist
-
-**User-Agent to use:** \`$UA\`
-
-**Hard rules (do NOT do):**
-- No mass/automated scanning
-- No DoS, no intrusive tests
-- No extracting customer data / PII
-- No entering unauthorized payment info
-- No external scripts for XSS, use \`alert(17)\` only for verification
-
-**Suggested manual checks:**
-- Open Redirect candidates: \`redirect\`, \`next\`, \`return\`
-- IDOR: numeric IDs, object keys in path/query
-- CORS: misconfig + real impact (token theft scenario)
-- Auth flows: OAuth params (code/state), CSRF on critical actions
-- File/Path handlers: \`file\`, \`path\`, \`download\`
-- Caching/misconfig on authenticated endpoints
-
-See: \`interesting-urls.txt\` for a shortlist.
 EOF
 
 echo "Prepared $OUT_DIR with checklists. Review manually with UA: $UA"
