@@ -1,0 +1,11 @@
+reblog.otto.de
+roombeez.otto.de
+twoforfashion.otto.de
+soulfully.otto.de
+updated.otto.de
+newsroom.otto.de
+www.otto.de/kundenchat
+www.otto.de/clara
+www.otto.de/user/sendcallbackrequest
+www.otto.de/user/contactFormSubmit
+keycloak.apps.otto.de
