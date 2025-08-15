@@ -1,0 +1,200 @@
+# =============================
+# File: .github/workflows/otto-recon.yml
+# Purpose: Passive/low-impact recon for YesWeHack Otto.de program
+# Notes:
+#  - Complies with program rules (no intrusive scans, no mass requests, no automated vuln scanners)
+#  - Only queries in-scope assets, excludes explicitly out-of-scope paths/domains
+#  - Uses custom User-Agent as requested by program
+#  - Output artifacts are uploaded for review
+# =============================
+
+name: otto-recon
+
+on:
+  workflow_dispatch:
+    inputs:
+      ywh_username:
+        description: "Your YesWeHack username to append in the UA (e.g., 0x3n0)"
+        required: true
+        default: "0x3n0"
+      rate_limit:
+        description: "Max requests per second for httpx/katana"
+        required: true
+        default: "1"
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    env:
+      YWH_USER: ${{ inputs.ywh_username }}
+      RPS: ${{ inputs.rate_limit }}
+      # Program UA requirement
+      UA: "Bug-Bounty-Hunter-#${{ inputs.ywh_username }}#"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ProjectDiscovery tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq unzip
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Prepare scope & blocklist
+        shell: bash
+        run: |
+          mkdir -p recon
+          cat > recon/scope.roots.txt <<'EOF'
+          otto.de
+          www.otto.de
+          www.otto.de/jobs
+          lascana.de
+          teleoptiprd.otto.de
+          mmp.otto.de
+          orbidder.otto.de
+          supplier-connect.otto.de
+          retail-api.otto.de
+          EOF
+
+          # Explicit OOS domains/paths from program brief
+          cat > recon/blocklist.txt <<'EOF'
+          reblog.otto.de
+          roombeez.otto.de
+          twoforfashion.otto.de
+          soulfully.otto.de
+          updated.otto.de
+          newsroom.otto.de
+          www.otto.de/kundenchat
+          www.otto.de/clara
+          www.otto.de/user/sendcallbackrequest
+          www.otto.de/user/contactFormSubmit
+          keycloak.apps.otto.de
+          # generic out-of-scope path hints
+          /apps-messenger
+          /tracking
+          EOF
+
+      - name: Passive subdomain discovery (subfinder)
+        shell: bash
+        run: |
+          # Passive only, silent, respect rate limits by tool defaults
+          subfinder -silent -all -nW -pc -dL recon/scope.roots.txt \
+            | sort -u > recon/subdomains.txt
+          wc -l recon/subdomains.txt || true
+
+      - name: Resolve alive hosts (dnsx)
+        shell: bash
+        run: |
+          dnsx -silent -a -resp -retries 2 -rl 30 -r public-dns.info \
+            -l recon/subdomains.txt | awk '{print $1}' | sort -u > recon/alive.subs.txt
+          wc -l recon/alive.subs.txt || true
+
+      - name: Probe HTTP(S) with custom UA (httpx)
+        shell: bash
+        run: |
+          httpx -silent -threads 25 -rl ${RPS} -H "User-Agent: ${UA}" \
+            -l recon/alive.subs.txt \
+            -status-code -title -tech-detect -server -follow-redirects \
+            -no-color | tee recon/httpx.raw.txt
+
+          # Remove explicitly out-of-scope items by hostname or path hints
+          grep -vi -f recon/blocklist.txt recon/httpx.raw.txt > recon/httpx.in-scope.txt || true
+
+      - name: Light crawl for own hosts (katana, depth 1)
+        shell: bash
+        run: |
+          # Depth=1, low rate, respect program by staying shallow and using UA
+          cut -d ' ' -f1 recon/httpx.in-scope.txt | \
+          katana -silent -rl ${RPS} -concurrency 2 -depth 1 -no-color -retry 1 \
+                 -jc -kf -H "User-Agent: ${UA}" \
+            | sort -u > recon/katana.urls.txt
+
+          # Filter out OOS paths
+          grep -vi -f recon/blocklist.txt recon/katana.urls.txt > recon/urls.in-scope.txt || true
+          wc -l recon/urls.in-scope.txt || true
+
+      - name: Summaries
+        shell: bash
+        run: |
+          echo "Subdomains: $(wc -l < recon/subdomains.txt)" | tee recon/summary.txt
+          echo "Alive hosts: $(wc -l < recon/alive.subs.txt)" | tee -a recon/summary.txt
+          echo "HTTP endpoints (in-scope): $(wc -l < recon/httpx.in-scope.txt)" | tee -a recon/summary.txt
+          echo "URLs (in-scope, depth1): $(wc -l < recon/urls.in-scope.txt)" | tee -a recon/summary.txt
+          printf "\nUser-Agent used: %s\n" "$UA" | tee -a recon/summary.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: otto-recon-${{ inputs.ywh_username }}
+          path: |
+            recon/summary.txt
+            recon/subdomains.txt
+            recon/alive.subs.txt
+            recon/httpx.in-scope.txt
+            recon/urls.in-scope.txt
+
+# =============================
+# File: scripts/next-steps.sh (optional helper)
+# Make executable and run locally to prepare a clean report skeleton.
+# =============================
+#
+# Usage: ./scripts/next-steps.sh "0x3n0" recon/urls.in-scope.txt
+#
+# This script will:
+#  - Create a minimal report template for each interesting path pattern
+#  - Remind to redact PII and avoid disallowed actions per program rules
+#
+# ----- START OF SCRIPT -----
+#
+#: <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+USER="${1:-0x3n0}"
+URLS_FILE="${2:-recon/urls.in-scope.txt}"
+UA="Bug-Bounty-Hunter-#${USER}#"
+OUT_DIR="reports"
+mkdir -p "$OUT_DIR"
+
+if [[ ! -s "$URLS_FILE" ]]; then
+  echo "No URLs found: $URLS_FILE" >&2
+  exit 1
+fi
+
+# Pick some patterns worth manual review
+grep -Ei '\\?(id|token|redirect|next|return|callback|code|state|lang|file|path|download|api|v1|v2|search|q=)' "$URLS_FILE" \
+  | sort -u | head -n 200 > "$OUT_DIR/interesting-urls.txt"
+
+cat > "$OUT_DIR/README.md" <<EOF
+# Otto.de – Manual Review Checklist
+
+**User-Agent to use:** \`$UA\`
+
+**Hard rules (do NOT do):**
+- No mass/automated scanning
+- No DoS, no intrusive tests
+- No extracting customer data / PII
+- No entering unauthorized payment info
+- No external scripts for XSS, use \`alert(17)\` only for verification
+
+**Suggested manual checks:**
+- Open Redirect candidates: \`redirect\`, \`next\`, \`return\`
+- IDOR: numeric IDs, object keys in path/query
+- CORS: misconfig + real impact (token theft scenario)
+- Auth flows: OAuth params (code/state), CSRF on critical actions
+- File/Path handlers: \`file\`, \`path\`, \`download\`
+- Caching/misconfig on authenticated endpoints
+
+See: \`interesting-urls.txt\` for a shortlist.
+EOF
+
+echo "Prepared $OUT_DIR with checklists. Review manually with UA: $UA"
+#BASH
