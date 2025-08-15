@@ -1,4 +1,0 @@
-usgeo.gov:80
-usgeo.gov:443
-www.usgeo.gov:80
-www.usgeo.gov:443

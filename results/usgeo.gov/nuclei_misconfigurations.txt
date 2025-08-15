@@ -1,4 +1,0 @@
-[xss-deprecated-header] [http] [info] https://www.usgeo.gov [1; mode=block]
-[xss-deprecated-header] [http] [info] https://usgeo.gov [1; mode=block]
-[missing-sri] [http] [info] https://www.usgeo.gov/ [https://player.vimeo.com/api/player.js,https://www.googletagmanager.com/gtag/js?id=G-PEVRR4EYZ4,https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200]
-[missing-sri] [http] [info] https://usgeo.gov/ [https://player.vimeo.com/api/player.js,https://www.googletagmanager.com/gtag/js?id=G-PEVRR4EYZ4,https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200]
